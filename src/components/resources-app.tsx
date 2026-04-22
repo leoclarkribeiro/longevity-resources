@@ -77,6 +77,42 @@ export default function ResourcesApp() {
     return copy;
   }, [resources, sortDirection, sortKey]);
 
+  async function ensureUserSession(options?: { announce?: boolean }) {
+    const { announce = false } = options ?? {};
+    const {
+      data: { session },
+      error: sessionError
+    } = await supabase.auth.getSession();
+
+    if (sessionError) {
+      setMessage(sessionError.message);
+      return null;
+    }
+
+    if (session?.user) {
+      const activeUser = mapAppUser(session.user);
+      setUser(activeUser);
+      return activeUser;
+    }
+
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (error) {
+      setMessage(
+        `Could not create anonymous session. ${error.message}`
+      );
+      return null;
+    }
+
+    const guestUser = mapAppUser(data.user);
+    setUser(guestUser);
+
+    if (announce) {
+      setMessage("Anonymous session ready. You can add resources now.");
+    }
+
+    return guestUser;
+  }
+
   useEffect(() => {
     if (missingSupabaseEnv) {
       setMessage(
@@ -89,25 +125,10 @@ export default function ResourcesApp() {
     let mounted = true;
 
     async function bootstrapAuth() {
-      const {
-        data: { session }
-      } = await supabase.auth.getSession();
-
       if (!mounted) {
         return;
       }
-
-      if (!session) {
-        const { data, error } = await supabase.auth.signInAnonymously();
-        if (error) {
-          setMessage(error.message);
-          return;
-        }
-        setUser(mapAppUser(data.user));
-        setMessage("Anonymous session ready. You can add resources now.");
-      } else {
-        setUser(mapAppUser(session.user));
-      }
+      await ensureUserSession({ announce: true });
     }
 
     void bootstrapAuth();
@@ -229,7 +250,8 @@ export default function ResourcesApp() {
     if (missingSupabaseEnv) {
       return;
     }
-    if (!user) {
+    const activeUser = user ?? (await ensureUserSession());
+    if (!activeUser) {
       setMessage("No active user session.");
       return;
     }
@@ -240,8 +262,8 @@ export default function ResourcesApp() {
       link: resourceForm.link.trim(),
       category: resourceForm.category,
       description: resourceForm.description.trim() || null,
-      created_by: user.id,
-      is_guest_post: Boolean(user.is_anonymous)
+      created_by: activeUser.id,
+      is_guest_post: Boolean(activeUser.is_anonymous)
     };
 
     const request = editingId
@@ -348,9 +370,8 @@ export default function ResourcesApp() {
     }
 
     await supabase.auth.signOut();
-    setMessage(
-      "Signed out. A fresh anonymous session will be created on next load."
-    );
+    await ensureUserSession();
+    setMessage("Signed out. A fresh anonymous session was started.");
   }
 
   return (
