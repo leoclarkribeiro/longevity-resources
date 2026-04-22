@@ -33,5 +33,5 @@ export type ResourceRow = {
   created_by: string;
   is_guest_post: boolean;
   likes_count: number;
-  profiles: Profile[] | null;
+  profiles: Profile | null;
 };

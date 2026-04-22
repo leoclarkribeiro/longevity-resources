@@ -6,6 +6,7 @@ import Link from "next/link";
 import { missingSupabaseEnv, supabase } from "@/lib/supabase/client";
 import {
   AppUser,
+  Profile,
   RESOURCE_CATEGORIES,
   ResourceCategory,
   ResourceRow
@@ -27,6 +28,8 @@ const defaultForm: ResourceForm = {
   category: "article",
   description: ""
 };
+
+type RawResourceRow = Omit<ResourceRow, "profiles">;
 
 function mapAppUser(user: User | null): AppUser | null {
   if (!user) {
@@ -66,8 +69,8 @@ export default function ResourcesApp() {
       } else if (sortKey === "likes_count") {
         compare = a.likes_count - b.likes_count;
       } else {
-        const authorA = (a.profiles?.[0]?.name || "").toLowerCase();
-        const authorB = (b.profiles?.[0]?.name || "").toLowerCase();
+        const authorA = (a.profiles?.name || "").toLowerCase();
+        const authorB = (b.profiles?.name || "").toLowerCase();
         compare = authorA.localeCompare(authorB);
       }
 
@@ -156,7 +159,7 @@ export default function ResourcesApp() {
       const { data, error } = await supabase
         .from("resources")
         .select(
-          "id,name,link,category,description,thumbnail_url,created_at,created_by,is_guest_post,likes_count,profiles:created_by(id,name,country,avatar_url)"
+          "id,name,link,category,description,thumbnail_url,created_at,created_by,is_guest_post,likes_count"
         )
         .order("created_at", { ascending: false });
 
@@ -166,8 +169,9 @@ export default function ResourcesApp() {
         return;
       }
 
-      const typedResources = (data ?? []) as ResourceRow[];
-      setResources(typedResources);
+      const typedResources = (data ?? []) as RawResourceRow[];
+      const hydratedResources = await enrichResourcesWithProfiles(typedResources);
+      setResources(hydratedResources);
       setLoadingResources(false);
     }
 
@@ -225,6 +229,36 @@ export default function ResourcesApp() {
     setResourceForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  async function enrichResourcesWithProfiles(rawResources: RawResourceRow[]) {
+    if (rawResources.length === 0) {
+      return [] as ResourceRow[];
+    }
+
+    const authorIds = Array.from(
+      new Set(rawResources.map((resource) => resource.created_by))
+    );
+
+    const { data: profilesData, error: profilesError } = await supabase
+      .from("profiles")
+      .select("id,name,country,avatar_url")
+      .in("id", authorIds);
+
+    if (profilesError) {
+      setMessage(profilesError.message);
+      return rawResources.map((resource) => ({ ...resource, profiles: null }));
+    }
+
+    const profileById = new Map<string, Profile>();
+    (profilesData ?? []).forEach((profile) => {
+      profileById.set(profile.id as string, profile as Profile);
+    });
+
+    return rawResources.map((resource) => ({
+      ...resource,
+      profiles: profileById.get(resource.created_by) ?? null
+    }));
+  }
+
   async function reloadResources() {
     if (missingSupabaseEnv) {
       return;
@@ -233,7 +267,7 @@ export default function ResourcesApp() {
     const { data, error } = await supabase
       .from("resources")
       .select(
-        "id,name,link,category,description,thumbnail_url,created_at,created_by,is_guest_post,likes_count,profiles:created_by(id,name,country,avatar_url)"
+        "id,name,link,category,description,thumbnail_url,created_at,created_by,is_guest_post,likes_count"
       )
       .order("created_at", { ascending: false });
 
@@ -242,7 +276,10 @@ export default function ResourcesApp() {
       return;
     }
 
-    setResources((data ?? []) as ResourceRow[]);
+    const hydratedResources = await enrichResourcesWithProfiles(
+      (data ?? []) as RawResourceRow[]
+    );
+    setResources(hydratedResources);
   }
 
   async function handleResourceSubmit(event: FormEvent<HTMLFormElement>) {
@@ -498,8 +535,7 @@ export default function ResourcesApp() {
           {sortedResources.map((resource) => {
             const isOwner = user?.id === resource.created_by;
             const isLiked = likedIds.has(resource.id);
-            const authorName =
-              resource.profiles?.[0]?.name || "Anonymous contributor";
+            const authorName = resource.profiles?.name || "Anonymous contributor";
 
             return (
               <li key={resource.id} className="resource-item">

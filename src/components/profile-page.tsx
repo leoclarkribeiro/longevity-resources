@@ -9,9 +9,11 @@ type ProfilePageProps = {
   userId: string;
 };
 
+type ProfileResourceRow = Omit<ResourceRow, "profiles">;
+
 export default function ProfilePage({ userId }: ProfilePageProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [resources, setResources] = useState<ResourceRow[]>([]);
+  const [resources, setResources] = useState<ProfileResourceRow[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -36,7 +38,7 @@ export default function ProfilePage({ userId }: ProfilePageProps) {
           supabase
             .from("resources")
             .select(
-              "id,name,link,category,description,thumbnail_url,created_at,created_by,is_guest_post,likes_count,profiles:created_by(id,name,country,avatar_url)"
+              "id,name,link,category,description,thumbnail_url,created_at,created_by,is_guest_post,likes_count"
             )
             .eq("created_by", userId)
             .order("created_at", { ascending: false })
@@ -47,7 +49,7 @@ export default function ProfilePage({ userId }: ProfilePageProps) {
       }
 
       setProfile(profileData as Profile | null);
-      setResources((resourceData ?? []) as ResourceRow[]);
+      setResources((resourceData ?? []) as ProfileResourceRow[]);
       setLoading(false);
     }
 
