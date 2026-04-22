@@ -36,6 +36,13 @@ export default function AuthHub() {
 
   const isAnonymous = Boolean(user?.is_anonymous);
 
+  function getEmailRedirectTo() {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+    return `${window.location.origin}/auth`;
+  }
+
   useEffect(() => {
     if (missingSupabaseEnv) {
       setMessage(
@@ -91,10 +98,15 @@ export default function AuthHub() {
     }
 
     setBusy(true);
-    const { error: updateError } = await supabase.auth.updateUser({
-      email: authForm.email.trim(),
-      password: authForm.password
-    });
+    const { error: updateError } = await supabase.auth.updateUser(
+      {
+        email: authForm.email.trim(),
+        password: authForm.password
+      },
+      {
+        emailRedirectTo: getEmailRedirectTo()
+      }
+    );
 
     if (updateError) {
       setBusy(false);
@@ -114,7 +126,9 @@ export default function AuthHub() {
       return;
     }
 
-    setMessage("Guest account upgraded successfully.");
+    setMessage(
+      "Upgrade started. Check your email to confirm, then you will return to this site."
+    );
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -142,7 +156,10 @@ export default function AuthHub() {
     setBusy(true);
     const { data, error } = await supabase.auth.signUp({
       email: authForm.email.trim(),
-      password: authForm.password
+      password: authForm.password,
+      options: {
+        emailRedirectTo: getEmailRedirectTo()
+      }
     });
 
     const createdUserId = data.user?.id;
@@ -180,93 +197,103 @@ export default function AuthHub() {
       </section>
 
       <section className="card auth-grid">
-        <form onSubmit={handleLogin} className="stack">
-          <h3>Login</h3>
-          <input
-            placeholder="Email"
-            type="email"
-            value={authForm.email}
-            onChange={(event) => setAuthField("email", event.target.value)}
-            required
-          />
-          <input
-            placeholder="Password"
-            type="password"
-            value={authForm.password}
-            onChange={(event) => setAuthField("password", event.target.value)}
-            required
-          />
-          <button type="submit" disabled={busy}>
-            Login
-          </button>
-        </form>
-
-        <form onSubmit={handleRegister} className="stack">
-          <h3>Register</h3>
-          <input
-            placeholder="Display name"
-            value={authForm.name}
-            onChange={(event) => setAuthField("name", event.target.value)}
-          />
-          <input
-            placeholder="Country"
-            value={authForm.country}
-            onChange={(event) => setAuthField("country", event.target.value)}
-          />
-          <input
-            placeholder="Email"
-            type="email"
-            value={authForm.email}
-            onChange={(event) => setAuthField("email", event.target.value)}
-            required
-          />
-          <input
-            placeholder="Password"
-            type="password"
-            value={authForm.password}
-            onChange={(event) => setAuthField("password", event.target.value)}
-            required
-          />
-          <button type="submit" disabled={busy}>
-            Create account
-          </button>
-        </form>
-
         {isAnonymous ? (
-          <form onSubmit={handleUpgradeGuest} className="stack">
-            <h3>Upgrade guest account</h3>
+          <>
+            <form onSubmit={handleUpgradeGuest} className="stack">
+              <h3>Upgrade this guest account</h3>
+              <p className="hint">
+                This keeps ownership of the resources you already posted as guest.
+              </p>
+              <input
+                placeholder="Display name"
+                value={authForm.name}
+                onChange={(event) => setAuthField("name", event.target.value)}
+              />
+              <input
+                placeholder="Country"
+                value={authForm.country}
+                onChange={(event) => setAuthField("country", event.target.value)}
+              />
+              <input
+                placeholder="Email"
+                type="email"
+                value={authForm.email}
+                onChange={(event) => setAuthField("email", event.target.value)}
+                required
+              />
+              <input
+                placeholder="Password"
+                type="password"
+                value={authForm.password}
+                onChange={(event) => setAuthField("password", event.target.value)}
+                required
+              />
+              <button type="submit" disabled={busy}>
+                Upgrade account
+              </button>
+            </form>
+
+            <form onSubmit={handleLogin} className="stack">
+              <h3>Use an existing account instead</h3>
+              <p className="hint">
+                Logging into another account will not transfer guest-owned resources.
+              </p>
+              <input
+                placeholder="Email"
+                type="email"
+                value={authForm.email}
+                onChange={(event) => setAuthField("email", event.target.value)}
+                required
+              />
+              <input
+                placeholder="Password"
+                type="password"
+                value={authForm.password}
+                onChange={(event) => setAuthField("password", event.target.value)}
+                required
+              />
+              <button type="submit" disabled={busy}>
+                Login
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
             <p className="hint">
-              Convert this guest session into a full profile without losing ownership.
+              You are already signed in with a registered account.
             </p>
-            <input
-              placeholder="Display name"
-              value={authForm.name}
-              onChange={(event) => setAuthField("name", event.target.value)}
-            />
-            <input
-              placeholder="Country"
-              value={authForm.country}
-              onChange={(event) => setAuthField("country", event.target.value)}
-            />
-            <input
-              placeholder="Email"
-              type="email"
-              value={authForm.email}
-              onChange={(event) => setAuthField("email", event.target.value)}
-              required
-            />
-            <input
-              placeholder="Password"
-              type="password"
-              value={authForm.password}
-              onChange={(event) => setAuthField("password", event.target.value)}
-              required
-            />
-            <button type="submit" disabled={busy}>
-              Upgrade account
-            </button>
-          </form>
-        ) : null}
+            <form onSubmit={handleRegister} className="stack">
+              <h3>Create another account</h3>
+              <input
+                placeholder="Display name"
+                value={authForm.name}
+                onChange={(event) => setAuthField("name", event.target.value)}
+              />
+              <input
+                placeholder="Country"
+                value={authForm.country}
+                onChange={(event) => setAuthField("country", event.target.value)}
+              />
+              <input
+                placeholder="Email"
+                type="email"
+                value={authForm.email}
+                onChange={(event) => setAuthField("email", event.target.value)}
+                required
+              />
+              <input
+                placeholder="Password"
+                type="password"
+                value={authForm.password}
+                onChange={(event) => setAuthField("password", event.target.value)}
+                required
+              />
+              <button type="submit" disabled={busy}>
+                Create account
+              </button>
+            </form>
+          </>
+        )}
       </section>
     </main>
   );
