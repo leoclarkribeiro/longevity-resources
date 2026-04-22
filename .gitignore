@@ -10,4 +10,5 @@ coverage
 .env.production.local
 *.log
 supabase/.branches
+supabase/.temp
 tsconfig.tsbuildinfo
