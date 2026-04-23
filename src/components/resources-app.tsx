@@ -406,9 +406,15 @@ export default function ResourcesApp() {
       is_guest_post: Boolean(activeUser.is_anonymous)
     };
 
+    const derivedThumbnail = resolveThumbnailFromUrl(payload.link);
+    const rowPayload = {
+      ...payload,
+      thumbnail_url: derivedThumbnail
+    };
+
     const request = editingId
-      ? supabase.from("resources").update(payload).eq("id", editingId)
-      : supabase.from("resources").insert(payload);
+      ? supabase.from("resources").update(rowPayload).eq("id", editingId)
+      : supabase.from("resources").insert(rowPayload);
 
     const { error } = await request;
     setBusy(false);
