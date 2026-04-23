@@ -51,6 +51,16 @@ function scrollToSection(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+function resourceThumbFrameClass(category: ResourceCategory): string {
+  if (category === "book") {
+    return "resource-card__thumb--book";
+  }
+  if (category === "video") {
+    return "resource-card__thumb--video";
+  }
+  return "resource-card__thumb--landscape";
+}
+
 function categoryPlaceholderIcon(category: ResourceCategory): string {
   switch (category) {
     case "video":
@@ -773,7 +783,9 @@ export default function ResourcesApp() {
 
                 return (
                   <li key={resource.id} className="resource-card">
-                    <div className="resource-card__thumb">
+                    <div
+                      className={`resource-card__thumb ${resourceThumbFrameClass(resource.category)}`}
+                    >
                       <ResourceThumbnail resolvedUrl={displayThumb} category={resource.category} />
                     </div>
                     <div className="resource-card__body">

@@ -482,6 +482,7 @@ body {
   grid-template-columns: 120px 1fr;
   gap: 1.1rem;
   padding: 1.1rem;
+  align-items: start;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--surface);
@@ -505,18 +506,29 @@ body {
 .resource-card__thumb {
   position: relative;
   width: 100%;
-  aspect-ratio: 3 / 4;
   border-radius: 10px;
   overflow: hidden;
   background: var(--surface-muted);
   border: 1px solid var(--border);
+  box-sizing: border-box;
+}
+
+/* Portrait frame for book covers; landscape for video / most link previews. */
+.resource-card__thumb--book {
+  aspect-ratio: 3 / 4;
+}
+
+.resource-card__thumb--video,
+.resource-card__thumb--landscape {
+  aspect-ratio: 16 / 9;
 }
 
 .resource-card__thumb .resource-card__thumb-img,
 .resource-card__thumb img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
 }
 
 .resource-card__thumb-placeholder {
