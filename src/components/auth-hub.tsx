@@ -3,15 +3,10 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { User } from "@supabase/supabase-js";
 import { missingSupabaseEnv, supabase } from "@/lib/supabase/client";
-import type { Profile } from "@/lib/types";
-
-type AppUser = {
-  id: string;
-  email?: string;
-  is_anonymous?: boolean;
-};
+import type { AppUser, Profile } from "@/lib/types";
 
 const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 const AVATAR_MIME = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
@@ -20,7 +15,6 @@ function mapAppUser(user: User | null): AppUser | null {
   if (!user) {
     return null;
   }
-
   return {
     id: user.id,
     email: user.email,
@@ -52,16 +46,21 @@ function mimeToExt(mime: string): string {
 }
 
 export default function AuthHub() {
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+
   const [user, setUser] = useState<AppUser | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [profileMode, setProfileMode] = useState<"view" | "edit">("view");
   const [authForm, setAuthForm] = useState({
     email: "",
     password: "",
     name: "",
     country: ""
   });
+  const [editForm, setEditForm] = useState({ name: "", country: "" });
 
   const isAnonymous = Boolean(user?.is_anonymous);
   const headerName = displayName(profile, user);
@@ -96,29 +95,19 @@ export default function AuthHub() {
     }
 
     let mounted = true;
-    async function bootstrapAuth() {
+
+    async function loadSession() {
       const {
         data: { session }
       } = await supabase.auth.getSession();
-
       if (!mounted) {
         return;
       }
-
-      if (!session) {
-        const { data, error } = await supabase.auth.signInAnonymously();
-        if (error) {
-          setMessage(error.message);
-          return;
-        }
-        setUser(mapAppUser(data.user));
-        setMessage("Anonymous session ready.");
-      } else {
-        setUser(mapAppUser(session.user));
-      }
+      setUser(mapAppUser(session?.user ?? null));
     }
 
-    void bootstrapAuth();
+    void loadSession();
+
     const {
       data: { subscription }
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -138,6 +127,15 @@ export default function AuthHub() {
     }
     void loadProfile(user.id);
   }, [user, loadProfile]);
+
+  useEffect(() => {
+    if (profile && profileMode === "edit") {
+      setEditForm({
+        name: profile.name ?? "",
+        country: profile.country ?? ""
+      });
+    }
+  }, [profile, profileMode]);
 
   function setAuthField(key: "email" | "password" | "name" | "country", value: string) {
     setAuthForm((prev) => ({ ...prev, [key]: value }));
@@ -216,7 +214,7 @@ export default function AuthHub() {
     setMessage("Profile photo removed.");
   }
 
-  async function handleUpgradeGuest(event: FormEvent<HTMLFormElement>) {
+  async function handleFinishGuestAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (missingSupabaseEnv || !user?.is_anonymous) {
       return;
@@ -252,9 +250,31 @@ export default function AuthHub() {
     }
 
     setMessage(
-      "Upgrade started. Check your email to confirm, then you will return to this site."
+      "Check your email and open the link we sent you to confirm your address and finish setting up your account."
     );
     await loadProfile(user.id);
+  }
+
+  async function handleGuestSignInToExisting(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (missingSupabaseEnv) {
+      return;
+    }
+
+    setBusy(true);
+    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signInWithPassword({
+      email: authForm.email.trim(),
+      password: authForm.password
+    });
+    setBusy(false);
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setMessage("Signed in.");
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -270,7 +290,7 @@ export default function AuthHub() {
     });
     setBusy(false);
 
-    setMessage(error ? error.message : "Logged in.");
+    setMessage(error ? error.message : "Signed in.");
   }
 
   async function handleRegister(event: FormEvent<HTMLFormElement>) {
@@ -301,19 +321,62 @@ export default function AuthHub() {
     setMessage(
       error
         ? error.message
-        : "Account created. Check your email if confirmation is enabled."
+        : "Account created. If email confirmation is on, check your inbox to finish signing up."
     );
   }
 
+  async function handleSaveProfileEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (missingSupabaseEnv || !user || isAnonymous) {
+      return;
+    }
+
+    setBusy(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        name: editForm.name.trim() || null,
+        country: editForm.country.trim() || null
+      })
+      .eq("id", user.id);
+    setBusy(false);
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    await loadProfile(user.id);
+    setProfileMode("view");
+    setMessage("Profile saved.");
+  }
+
+  async function handleSignOut() {
+    if (missingSupabaseEnv) {
+      return;
+    }
+    await supabase.auth.signOut();
+    setProfile(null);
+    setProfileMode("view");
+    setMessage("Signed out.");
+  }
+
+  const highlightLogin = tabParam === "login";
+  const highlightRegister = tabParam !== "login";
+
   return (
-    <main className="page">
+    <main className="page auth-page">
       <section className="card">
         <p className="eyebrow">Account</p>
-        <h1 className="font-serif">Sign in or upgrade</h1>
-        <p className="subtext">
-          Session: <strong>{isAnonymous ? "Guest" : "Registered"}</strong>
-          {user?.email ? ` (${user.email})` : ""}
-        </p>
+        <h1 className="font-serif">
+          {!user
+            ? "Sign in or register"
+            : isAnonymous
+              ? "Finish your account"
+              : profileMode === "edit"
+                ? "Edit profile"
+                : "Your profile"}
+        </h1>
         {message ? <p className="status">{message}</p> : null}
         <div className="inline-actions">
           <Link href="/">
@@ -322,98 +385,21 @@ export default function AuthHub() {
         </div>
       </section>
 
-      {user ? (
-        <section className="card">
-          <h2 className="font-serif" style={{ marginTop: 0, fontSize: "1.25rem", color: "var(--heading-green)" }}>
-            Profile photo
-          </h2>
-          <p className="hint">
-            JPG, PNG, WebP, or GIF. Max 5MB. Shown in the header after you save.
-          </p>
-          <div className="avatar-uploader" style={{ marginTop: "1rem" }}>
-            <div className="avatar-uploader__preview">
-              {profile?.avatar_url ? (
-                <Image
-                  src={profile.avatar_url}
-                  alt=""
-                  width={96}
-                  height={96}
-                  className="avatar-uploader__preview-img"
-                  unoptimized
-                />
-              ) : (
-                <span className="avatar-uploader__fallback">{headerName.charAt(0).toUpperCase()}</span>
-              )}
-            </div>
-            <div className="avatar-uploader__controls">
-              <label className="avatar-uploader__label">
-                Choose photo
-                <input
-                  type="file"
-                  className="avatar-uploader__file"
-                  accept={AVATAR_MIME.join(",")}
-                  onChange={(event) => void handleAvatarFile(event)}
-                  disabled={busy}
-                />
-              </label>
-              {profile?.avatar_url ? (
-                <button type="button" className="btn-ghost-sm" onClick={handleRemoveAvatar} disabled={busy}>
-                  Remove photo
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      <section className="card auth-grid">
-        {isAnonymous ? (
-          <>
-            <form onSubmit={handleUpgradeGuest} className="stack">
-              <h3>Upgrade this guest account</h3>
-              <p className="hint">
-                This keeps ownership of the resources you already posted as guest.
-              </p>
-              <input
-                placeholder="Display name"
-                value={authForm.name}
-                onChange={(event) => setAuthField("name", event.target.value)}
-              />
-              <input
-                placeholder="Country"
-                value={authForm.country}
-                onChange={(event) => setAuthField("country", event.target.value)}
-              />
-              <input
-                placeholder="Email"
-                type="email"
-                value={authForm.email}
-                onChange={(event) => setAuthField("email", event.target.value)}
-                required
-              />
-              <input
-                placeholder="Password"
-                type="password"
-                value={authForm.password}
-                onChange={(event) => setAuthField("password", event.target.value)}
-                required
-              />
-              <button type="submit" disabled={busy}>
-                Upgrade account
-              </button>
-            </form>
-
+      {!user ? (
+        <div className="auth-page__grid">
+          <section className={`card auth-page__card${highlightLogin ? " auth-page__card--focus" : ""}`} id="login">
+            <h2 className="font-serif" style={{ marginTop: 0, fontSize: "1.2rem", color: "var(--heading-green)" }}>
+              Sign in
+            </h2>
+            <p className="hint">Use the email and password for your existing account.</p>
             <form onSubmit={handleLogin} className="stack">
-              <h3>Use an existing account instead</h3>
-              <p className="hint">
-                Logging into another account will not transfer guest-owned resources.
-              </p>
               <input
                 placeholder="Email"
                 type="email"
                 value={authForm.email}
                 onChange={(event) => setAuthField("email", event.target.value)}
                 required
+                autoComplete="email"
               />
               <input
                 placeholder="Password"
@@ -421,28 +407,34 @@ export default function AuthHub() {
                 value={authForm.password}
                 onChange={(event) => setAuthField("password", event.target.value)}
                 required
+                autoComplete="current-password"
               />
               <button type="submit" disabled={busy}>
-                Login
+                Sign in
               </button>
             </form>
-          </>
-        ) : (
-          <>
-            <p className="hint">
-              You are already signed in with a registered account.
-            </p>
+          </section>
+
+          <section
+            className={`card auth-page__card${highlightRegister ? " auth-page__card--focus" : ""}`}
+            id="register"
+          >
+            <h2 className="font-serif" style={{ marginTop: 0, fontSize: "1.2rem", color: "var(--heading-green)" }}>
+              Create an account
+            </h2>
+            <p className="hint">Add your email and a password. You may need to confirm your email to finish.</p>
             <form onSubmit={handleRegister} className="stack">
-              <h3>Create another account</h3>
               <input
-                placeholder="Display name"
+                placeholder="Display name (optional)"
                 value={authForm.name}
                 onChange={(event) => setAuthField("name", event.target.value)}
+                autoComplete="name"
               />
               <input
-                placeholder="Country"
+                placeholder="Country (optional)"
                 value={authForm.country}
                 onChange={(event) => setAuthField("country", event.target.value)}
+                autoComplete="country-name"
               />
               <input
                 placeholder="Email"
@@ -450,6 +442,7 @@ export default function AuthHub() {
                 value={authForm.email}
                 onChange={(event) => setAuthField("email", event.target.value)}
                 required
+                autoComplete="email"
               />
               <input
                 placeholder="Password"
@@ -457,14 +450,200 @@ export default function AuthHub() {
                 value={authForm.password}
                 onChange={(event) => setAuthField("password", event.target.value)}
                 required
+                autoComplete="new-password"
               />
               <button type="submit" disabled={busy}>
                 Create account
               </button>
             </form>
-          </>
-        )}
-      </section>
+          </section>
+        </div>
+      ) : null}
+
+      {user && !isAnonymous ? (
+        <>
+          <section className="card">
+            {profileMode === "view" ? (
+              <>
+                <div className="auth-profile-view">
+                  <div className="avatar-uploader__preview auth-profile-view__avatar">
+                    {profile?.avatar_url ? (
+                      <Image
+                        src={profile.avatar_url}
+                        alt=""
+                        width={96}
+                        height={96}
+                        className="avatar-uploader__preview-img"
+                        unoptimized
+                      />
+                    ) : (
+                      <span className="avatar-uploader__fallback">{headerName.charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
+                  <dl className="auth-profile-view__dl">
+                    <dt>Name</dt>
+                    <dd>{profile?.name?.trim() || "—"}</dd>
+                    <dt>Email</dt>
+                    <dd>{user.email || "—"}</dd>
+                    <dt>Country</dt>
+                    <dd>{profile?.country?.trim() || "—"}</dd>
+                  </dl>
+                </div>
+                <div className="inline-actions" style={{ marginTop: "1rem" }}>
+                  <button type="button" className="btn-peach" onClick={() => setProfileMode("edit")}>
+                    Edit profile
+                  </button>
+                </div>
+              </>
+            ) : (
+              <form onSubmit={handleSaveProfileEdit} className="stack">
+                <div className="avatar-uploader" style={{ marginTop: "0.5rem" }}>
+                  <div className="avatar-uploader__preview">
+                    {profile?.avatar_url ? (
+                      <Image
+                        src={profile.avatar_url}
+                        alt=""
+                        width={96}
+                        height={96}
+                        className="avatar-uploader__preview-img"
+                        unoptimized
+                      />
+                    ) : (
+                      <span className="avatar-uploader__fallback">{headerName.charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
+                  <div className="avatar-uploader__controls">
+                    <label className="avatar-uploader__label">
+                      Choose photo
+                      <input
+                        type="file"
+                        className="avatar-uploader__file"
+                        accept={AVATAR_MIME.join(",")}
+                        onChange={(event) => void handleAvatarFile(event)}
+                        disabled={busy}
+                      />
+                    </label>
+                    {profile?.avatar_url ? (
+                      <button type="button" className="btn-ghost-sm" onClick={handleRemoveAvatar} disabled={busy}>
+                        Remove photo
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                <p className="hint">JPG, PNG, WebP, or GIF. Max 5MB.</p>
+                <input
+                  placeholder="Display name"
+                  value={editForm.name}
+                  onChange={(event) => setEditForm((p) => ({ ...p, name: event.target.value }))}
+                />
+                <input
+                  placeholder="Country"
+                  value={editForm.country}
+                  onChange={(event) => setEditForm((p) => ({ ...p, country: event.target.value }))}
+                />
+                <div className="inline-actions">
+                  <button type="submit" disabled={busy}>
+                    Save changes
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost-sm"
+                    onClick={() => {
+                      setProfileMode("view");
+                      setMessage("");
+                    }}
+                    disabled={busy}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </section>
+
+          <section className="card">
+            <button type="button" className="btn-ghost-sm" onClick={() => void handleSignOut()}>
+              Sign out
+            </button>
+          </section>
+        </>
+      ) : null}
+
+      {user && isAnonymous ? (
+        <div className="auth-page__grid auth-page__grid--stack">
+          <section className="card">
+            <h2 className="font-serif" style={{ marginTop: 0, fontSize: "1.2rem", color: "var(--heading-green)" }}>
+              Add email and password
+            </h2>
+            <p className="hint">
+              Enter the email and password you want for this account. We will send you a link to confirm your email
+              and finish setup. Resources you added while browsing as a guest stay on this account.
+            </p>
+            <form onSubmit={handleFinishGuestAccount} className="stack">
+              <input
+                placeholder="Display name (optional)"
+                value={authForm.name}
+                onChange={(event) => setAuthField("name", event.target.value)}
+              />
+              <input
+                placeholder="Country (optional)"
+                value={authForm.country}
+                onChange={(event) => setAuthField("country", event.target.value)}
+              />
+              <input
+                placeholder="Email"
+                type="email"
+                value={authForm.email}
+                onChange={(event) => setAuthField("email", event.target.value)}
+                required
+                autoComplete="email"
+              />
+              <input
+                placeholder="Password"
+                type="password"
+                value={authForm.password}
+                onChange={(event) => setAuthField("password", event.target.value)}
+                required
+                autoComplete="new-password"
+              />
+              <button type="submit" disabled={busy}>
+                Send confirmation email
+              </button>
+            </form>
+          </section>
+
+          <section className="card">
+            <h2 className="font-serif" style={{ marginTop: 0, fontSize: "1.2rem", color: "var(--heading-green)" }}>
+              Already have an account?
+            </h2>
+            <p className="hint">
+              Signing in here will end this guest session on this device. Posts you made as this guest stay with that
+              guest account unless you finish creating the account above first.
+            </p>
+            <form onSubmit={handleGuestSignInToExisting} className="stack">
+              <input
+                placeholder="Email"
+                type="email"
+                value={authForm.email}
+                onChange={(event) => setAuthField("email", event.target.value)}
+                required
+                autoComplete="email"
+              />
+              <input
+                placeholder="Password"
+                type="password"
+                value={authForm.password}
+                onChange={(event) => setAuthField("password", event.target.value)}
+                required
+                autoComplete="current-password"
+              />
+              <button type="submit" disabled={busy}>
+                Sign in with existing account
+              </button>
+            </form>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

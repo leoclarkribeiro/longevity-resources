@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { User } from "@supabase/supabase-js";
@@ -132,6 +132,7 @@ export default function ResourcesApp() {
   const [loadingResources, setLoadingResources] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>("");
+  const [authGateOpen, setAuthGateOpen] = useState(false);
 
   const isAnonymous = Boolean(user?.is_anonymous);
   const canSocialAct = Boolean(user && !isAnonymous);
@@ -170,37 +171,27 @@ export default function ResourcesApp() {
     return list;
   }, [sortedResources, categoryFilter, searchQuery]);
 
-  async function ensureUserSession(options?: { announce?: boolean }) {
-    const { announce = false } = options ?? {};
-    const {
-      data: { session },
-      error: sessionError
-    } = await supabase.auth.getSession();
-
-    if (sessionError) {
-      setMessage(sessionError.message);
+  async function ensureGuestSession(): Promise<AppUser | null> {
+    if (missingSupabaseEnv) {
       return null;
     }
-
-    if (session?.user) {
-      const activeUser = mapAppUser(session.user);
-      setUser(activeUser);
-      return activeUser;
-    }
-
     const { data, error } = await supabase.auth.signInAnonymously();
     if (error) {
-      setMessage(`Could not create anonymous session. ${error.message}`);
+      setMessage(`Could not start a guest session. ${error.message}`);
       return null;
     }
-
     const guestUser = mapAppUser(data.user);
     setUser(guestUser);
-    if (announce) {
-      setMessage("Anonymous session ready. You can add resources now.");
-    }
     return guestUser;
   }
+
+  const continueAsGuestFromGate = useCallback(async () => {
+    const guest = await ensureGuestSession();
+    if (guest) {
+      setAuthGateOpen(false);
+      setMessage("You are browsing as a guest. You can add resources now.");
+    }
+  }, []);
 
   useEffect(() => {
     if (missingSupabaseEnv) {
@@ -213,14 +204,22 @@ export default function ResourcesApp() {
 
     let mounted = true;
 
-    async function bootstrapAuth() {
+    async function loadSession() {
       if (!mounted) {
         return;
       }
-      await ensureUserSession({ announce: true });
+      const {
+        data: { session },
+        error: sessionError
+      } = await supabase.auth.getSession();
+      if (sessionError) {
+        setMessage(sessionError.message);
+        return;
+      }
+      setUser(mapAppUser(session?.user ?? null));
     }
 
-    void bootstrapAuth();
+    void loadSession();
 
     const {
       data: { subscription }
@@ -233,6 +232,14 @@ export default function ResourcesApp() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setLikedIds(new Set());
+      setFollowingIds(new Set());
+      setEditingId(null);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (missingSupabaseEnv || !user) {
@@ -385,16 +392,25 @@ export default function ResourcesApp() {
     setResources(hydratedResources);
   }
 
+  function handleAddResourceNavClick() {
+    scrollToSection("add-resource-form");
+    if (!user) {
+      setAuthGateOpen(true);
+      setMessage("Sign in, create an account, or continue as a guest to add a resource.");
+    }
+  }
+
   async function handleResourceSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (missingSupabaseEnv) {
       return;
     }
-    const activeUser = user ?? (await ensureUserSession());
-    if (!activeUser) {
-      setMessage("No active user session.");
+    if (!user) {
+      setAuthGateOpen(true);
+      setMessage("Sign in, create an account, or continue as a guest to add a resource.");
       return;
     }
+    const activeUser = user;
 
     setBusy(true);
     const payload = {
@@ -551,9 +567,8 @@ export default function ResourcesApp() {
     }
 
     await supabase.auth.signOut();
-    await ensureUserSession();
     setMyProfile(null);
-    setMessage("Signed out. A fresh anonymous session was started.");
+    setMessage("Signed out.");
   }
 
   return (
@@ -577,42 +592,65 @@ export default function ResourcesApp() {
                   >
                     Browse
                   </button>
-                  <button
-                    type="button"
-                    className="btn-peach"
-                    onClick={() => scrollToSection("add-resource-form")}
-                  >
+                  <button type="button" className="btn-peach" onClick={handleAddResourceNavClick}>
                     Add Resource
                   </button>
                 </div>
-                <div className="site-user">
-                  <Link
-                    href="/auth"
-                    className="site-user__profile-link"
-                    aria-label="Account and profile"
-                  >
-                    <div className="site-user__avatar" aria-hidden>
-                      {myProfile?.avatar_url ? (
-                        <Image
-                          src={myProfile.avatar_url}
-                          alt=""
-                          width={44}
-                          height={44}
-                          className="site-user__avatar-img"
-                          unoptimized
-                        />
-                      ) : (
-                        <span className="site-user__avatar-fallback">
-                          {headerName.charAt(0).toUpperCase()}
+                {!user ? (
+                  <div className="site-user site-user--auth-cta">
+                    <Link href="/auth?tab=register" className="btn-peach">
+                      Create account
+                    </Link>
+                    <Link href="/auth?tab=login" className="btn-peach btn-peach--outline">
+                      Sign in
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="site-user">
+                    <Link
+                      href="/auth"
+                      className="site-user__profile-link"
+                      aria-label={isAnonymous ? "Account and finish sign-up" : "View profile"}
+                    >
+                      <div className="site-user__avatar" aria-hidden>
+                        {isAnonymous ? (
+                          <span className="site-user__avatar-fallback site-user__avatar-fallback--guest">G</span>
+                        ) : myProfile?.avatar_url ? (
+                          <Image
+                            src={myProfile.avatar_url}
+                            alt=""
+                            width={44}
+                            height={44}
+                            className="site-user__avatar-img"
+                            unoptimized
+                          />
+                        ) : (
+                          <span className="site-user__avatar-fallback">
+                            {headerName.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="site-user__name">{headerName}</div>
+                    </Link>
+                    {isAnonymous ? (
+                      <div className="site-user__guest-links">
+                        <Link href="/auth?tab=login" className="site-user__inline-link">
+                          Sign in
+                        </Link>
+                        <span className="site-user__guest-sep" aria-hidden>
+                          ·
                         </span>
-                      )}
-                    </div>
-                    <div className="site-user__name">{headerName}</div>
-                  </Link>
-                  <button type="button" className="site-user__signout" onClick={handleSignOut}>
-                    Sign out
-                  </button>
-                </div>
+                        <Link href="/auth?tab=register" className="site-user__inline-link">
+                          Register
+                        </Link>
+                      </div>
+                    ) : (
+                      <button type="button" className="site-user__signout" onClick={handleSignOut}>
+                        Sign out
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="site-header__theme-wrap">
@@ -648,10 +686,63 @@ export default function ResourcesApp() {
             A minimalist, community-driven database of the best longevity resources. Share,
             discover, and follow fellow enthusiasts.
           </p>
+          {!user ? (
+            <p className="hero__auth-cta">
+              <Link href="/auth?tab=register" className="hero__auth-cta-link">
+                Create an account
+              </Link>
+              <span className="hero__auth-cta-sep"> · </span>
+              <Link href="/auth?tab=login" className="hero__auth-cta-link">
+                Sign in
+              </Link>
+            </p>
+          ) : null}
         </div>
       </section>
 
       <main className="site-main">
+        {authGateOpen ? (
+          <div
+            className="auth-gate-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="auth-gate-title"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setAuthGateOpen(false);
+              }
+            }}
+          >
+            <div className="auth-gate-modal__panel card" onClick={(e) => e.stopPropagation()}>
+              <h2 id="auth-gate-title" className="font-serif auth-gate-modal__title">
+                Add a resource
+              </h2>
+              <p className="subtext auth-gate-modal__text">
+                Sign in, create an account, or continue as a guest to post. Guests can add resources; create an
+                account any time to use likes and follows.
+              </p>
+              <div className="auth-gate-modal__actions">
+                <button type="button" className="btn-peach" onClick={() => void continueAsGuestFromGate()}>
+                  Continue as guest
+                </button>
+                <Link href="/auth?tab=login" className="btn-peach btn-peach--outline" onClick={() => setAuthGateOpen(false)}>
+                  Sign in
+                </Link>
+                <Link
+                  href="/auth?tab=register"
+                  className="btn-peach btn-peach--outline"
+                  onClick={() => setAuthGateOpen(false)}
+                >
+                  Create account
+                </Link>
+              </div>
+              <button type="button" className="auth-gate-modal__cancel btn-ghost-sm" onClick={() => setAuthGateOpen(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {message ? <p className="toast-status">{message}</p> : null}
 
         <section id="add-resource-form" className="add-form-panel">
