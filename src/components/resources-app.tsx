@@ -567,54 +567,55 @@ export default function ResourcesApp() {
           </Link>
 
           <nav className="site-nav" aria-label="Primary">
-            <div className="site-nav__links">
-              <button
-                type="button"
-                className="site-nav__link"
-                onClick={() => scrollToSection("community-resources")}
-              >
-                Browse
-              </button>
-              <button
-                type="button"
-                className="site-nav__link"
-                onClick={() => scrollToSection("add-resource-form")}
-              >
-                Add Resource
-              </button>
-            </div>
-
             <div className="site-header__right">
-              <div className="site-user">
-                <Link
-                  href="/auth"
-                  className="site-user__profile-link"
-                  aria-label="Account and profile"
-                >
-                  <div className="site-user__avatar" aria-hidden>
-                    {myProfile?.avatar_url ? (
-                      <Image
-                        src={myProfile.avatar_url}
-                        alt=""
-                        width={44}
-                        height={44}
-                        className="site-user__avatar-img"
-                        unoptimized
-                      />
-                    ) : (
-                      <span className="site-user__avatar-fallback">
-                        {headerName.charAt(0).toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-                  <div className="site-user__name">{headerName}</div>
-                </Link>
-                <button type="button" className="site-user__signout" onClick={handleSignOut}>
-                  Sign out
-                </button>
+              <div className="site-header__top-cluster">
+                <div className="site-header__nav-actions">
+                  <button
+                    type="button"
+                    className="btn-peach"
+                    onClick={() => scrollToSection("community-resources")}
+                  >
+                    Browse
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-peach"
+                    onClick={() => scrollToSection("add-resource-form")}
+                  >
+                    Add Resource
+                  </button>
+                </div>
+                <div className="site-user">
+                  <Link
+                    href="/auth"
+                    className="site-user__profile-link"
+                    aria-label="Account and profile"
+                  >
+                    <div className="site-user__avatar" aria-hidden>
+                      {myProfile?.avatar_url ? (
+                        <Image
+                          src={myProfile.avatar_url}
+                          alt=""
+                          width={44}
+                          height={44}
+                          className="site-user__avatar-img"
+                          unoptimized
+                        />
+                      ) : (
+                        <span className="site-user__avatar-fallback">
+                          {headerName.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="site-user__name">{headerName}</div>
+                  </Link>
+                  <button type="button" className="site-user__signout" onClick={handleSignOut}>
+                    Sign out
+                  </button>
+                </div>
               </div>
 
-              <div className="site-header__actions">
+              <div className="site-header__theme-wrap">
                 <button
                   type="button"
                   className="theme-toggle"
@@ -631,13 +632,6 @@ export default function ResourcesApp() {
                     </span>
                     <span className={theme === "dark" ? "is-active" : undefined}>Dark</span>
                   </span>
-                </button>
-                <button
-                  type="button"
-                  className="btn-peach"
-                  onClick={() => scrollToSection("add-resource-form")}
-                >
-                  Add New Resource
                 </button>
               </div>
             </div>
