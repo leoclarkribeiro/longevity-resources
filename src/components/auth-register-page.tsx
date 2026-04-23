@@ -27,7 +27,9 @@ export default function AuthRegisterPage() {
     if (!ready || !user) {
       return;
     }
-    router.replace("/auth");
+    if (!user.is_anonymous) {
+      router.replace("/auth");
+    }
   }, [ready, user, router]);
 
   async function handleRegister(event: FormEvent<HTMLFormElement>) {
@@ -37,6 +39,13 @@ export default function AuthRegisterPage() {
     }
 
     setBusy(true);
+    const {
+      data: { session }
+    } = await supabase.auth.getSession();
+    if (session?.user?.is_anonymous) {
+      await supabase.auth.signOut();
+    }
+
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
@@ -73,7 +82,7 @@ export default function AuthRegisterPage() {
     );
   }
 
-  if (user) {
+  if (user && !user.is_anonymous) {
     return (
       <main className="page auth-page">
         <p className="subtext">Redirecting…</p>
@@ -86,7 +95,11 @@ export default function AuthRegisterPage() {
       <section className="card auth-page__single">
         <p className="eyebrow">Account</p>
         <h1 className="font-serif">Create an account</h1>
-        <p className="hint">Add your email and a password. You may need to confirm your email to finish.</p>
+        <p className="hint">
+          {user?.is_anonymous
+            ? "Add your email and a password. We’ll sign you out of this guest session when your new account is created. You may need to confirm your email to finish."
+            : "Add your email and a password. You may need to confirm your email to finish."}
+        </p>
         {message ? <p className="status">{message}</p> : null}
 
         <form onSubmit={handleRegister} className="stack" style={{ marginTop: "1rem" }}>

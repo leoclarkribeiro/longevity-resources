@@ -18,7 +18,9 @@ export default function AuthLoginPage() {
     if (!ready || !user) {
       return;
     }
-    router.replace("/auth");
+    if (!user.is_anonymous) {
+      router.replace("/auth");
+    }
   }, [ready, user, router]);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -28,6 +30,13 @@ export default function AuthLoginPage() {
     }
 
     setBusy(true);
+    const {
+      data: { session }
+    } = await supabase.auth.getSession();
+    if (session?.user?.is_anonymous) {
+      await supabase.auth.signOut();
+    }
+
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password
@@ -50,7 +59,7 @@ export default function AuthLoginPage() {
     );
   }
 
-  if (user) {
+  if (user && !user.is_anonymous) {
     return (
       <main className="page auth-page">
         <p className="subtext">Redirecting…</p>
@@ -63,7 +72,11 @@ export default function AuthLoginPage() {
       <section className="card auth-page__single">
         <p className="eyebrow">Account</p>
         <h1 className="font-serif">Sign in</h1>
-        <p className="hint">Use the email and password for your existing account.</p>
+        <p className="hint">
+          {user?.is_anonymous
+            ? "Use the email and password for your existing account. Signing in will end this guest session on this device."
+            : "Use the email and password for your existing account."}
+        </p>
         {message ? <p className="status">{message}</p> : null}
 
         <form onSubmit={handleLogin} className="stack" style={{ marginTop: "1rem" }}>

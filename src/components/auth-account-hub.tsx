@@ -42,12 +42,6 @@ export default function AuthAccountHub() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [profileMode, setProfileMode] = useState<"view" | "edit">("view");
-  const [guestForm, setGuestForm] = useState({
-    email: "",
-    password: "",
-    name: "",
-    country: ""
-  });
   const [editForm, setEditForm] = useState({ name: "", country: "" });
 
   const isAnonymous = Boolean(user?.is_anonymous);
@@ -66,13 +60,6 @@ export default function AuthAccountHub() {
     }
     setProfile(data as Profile | null);
   }, []);
-
-  function getEmailRedirectTo() {
-    if (typeof window === "undefined") {
-      return undefined;
-    }
-    return `${window.location.origin}/auth`;
-  }
 
   useEffect(() => {
     if (missingSupabaseEnv) {
@@ -111,15 +98,6 @@ export default function AuthAccountHub() {
   }, []);
 
   useEffect(() => {
-    if (!sessionReady) {
-      return;
-    }
-    if (!user) {
-      router.replace("/auth/register");
-    }
-  }, [sessionReady, user, router]);
-
-  useEffect(() => {
     if (missingSupabaseEnv || !user) {
       setProfile(null);
       return;
@@ -135,10 +113,6 @@ export default function AuthAccountHub() {
       });
     }
   }, [profile, profileMode]);
-
-  function setGuestField(key: "email" | "password" | "name" | "country", value: string) {
-    setGuestForm((prev) => ({ ...prev, [key]: value }));
-  }
 
   async function handleAvatarFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -213,69 +187,6 @@ export default function AuthAccountHub() {
     setMessage("Profile photo removed.");
   }
 
-  async function handleFinishGuestAccount(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (missingSupabaseEnv || !user?.is_anonymous) {
-      return;
-    }
-
-    setBusy(true);
-    const { error: updateError } = await supabase.auth.updateUser(
-      {
-        email: guestForm.email.trim(),
-        password: guestForm.password
-      },
-      {
-        emailRedirectTo: getEmailRedirectTo()
-      }
-    );
-
-    if (updateError) {
-      setBusy(false);
-      setMessage(updateError.message);
-      return;
-    }
-
-    const { error: profileError } = await supabase.from("profiles").upsert({
-      id: user.id,
-      name: guestForm.name.trim() || null,
-      country: guestForm.country.trim() || null
-    });
-    setBusy(false);
-
-    if (profileError) {
-      setMessage(profileError.message);
-      return;
-    }
-
-    setMessage(
-      "Check your email and open the link we sent you to confirm your address and finish setting up your account."
-    );
-    await loadProfile(user.id);
-  }
-
-  async function handleGuestSignInToExisting(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (missingSupabaseEnv) {
-      return;
-    }
-
-    setBusy(true);
-    await supabase.auth.signOut();
-    const { error } = await supabase.auth.signInWithPassword({
-      email: guestForm.email.trim(),
-      password: guestForm.password
-    });
-    setBusy(false);
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    router.replace("/");
-  }
-
   async function handleSaveProfileEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (missingSupabaseEnv || !user || isAnonymous) {
@@ -310,13 +221,43 @@ export default function AuthAccountHub() {
     setProfile(null);
     setProfileMode("view");
     setMessage("Signed out.");
-    router.replace("/auth/register");
+    router.replace("/auth");
   }
 
-  if (!sessionReady || !user) {
+  if (!sessionReady) {
     return (
       <main className="page auth-page">
         <p className="subtext">Loading…</p>
+      </main>
+    );
+  }
+
+  if (!user || isAnonymous) {
+    return (
+      <main className="page auth-page">
+        <section className="card auth-page__single">
+          <p className="eyebrow">Account</p>
+          <h1 className="font-serif">{isAnonymous ? "You're browsing as a guest" : "Account"}</h1>
+          <p className="hint">
+            {isAnonymous
+              ? "Sign in or create an account whenever you're ready — same choices as when you're not signed in."
+              : "Sign in or create an account to save your profile, use likes and follows, and manage your posts."}
+          </p>
+          {message ? <p className="status">{message}</p> : null}
+          <div className="inline-actions site-user--auth-cta" style={{ marginTop: "1.25rem" }}>
+            <Link href="/auth/register" className="btn-peach">
+              Create account
+            </Link>
+            <Link href="/auth/login" className="btn-peach btn-peach--outline">
+              Sign in
+            </Link>
+          </div>
+          <div className="inline-actions" style={{ marginTop: "1rem" }}>
+            <Link href="/" className="btn-peach btn-peach--outline">
+              Back to resources
+            </Link>
+          </div>
+        </section>
       </main>
     );
   }
@@ -326,11 +267,7 @@ export default function AuthAccountHub() {
       <section className="card">
         <p className="eyebrow">Account</p>
         <h1 className="font-serif">
-          {isAnonymous
-            ? "Finish your account"
-            : profileMode === "edit"
-              ? "Edit profile"
-              : "Your profile"}
+          {profileMode === "edit" ? "Edit profile" : "Your profile"}
         </h1>
         {message ? <p className="status">{message}</p> : null}
         <div className="inline-actions">
@@ -340,190 +277,110 @@ export default function AuthAccountHub() {
         </div>
       </section>
 
-      {user && !isAnonymous ? (
-        <>
-          <section className="card">
-            {profileMode === "view" ? (
-              <>
-                <div className="auth-profile-view">
-                  <div className="avatar-uploader__preview auth-profile-view__avatar">
-                    {profile?.avatar_url ? (
-                      <Image
-                        src={profile.avatar_url}
-                        alt=""
-                        width={96}
-                        height={96}
-                        className="avatar-uploader__preview-img"
-                        unoptimized
-                      />
-                    ) : (
-                      <span className="avatar-uploader__fallback">{headerName.charAt(0).toUpperCase()}</span>
-                    )}
-                  </div>
-                  <dl className="auth-profile-view__dl">
-                    <dt>Name</dt>
-                    <dd>{profile?.name?.trim() || "—"}</dd>
-                    <dt>Email</dt>
-                    <dd>{user.email || "—"}</dd>
-                    <dt>Country</dt>
-                    <dd>{profile?.country?.trim() || "—"}</dd>
-                  </dl>
-                </div>
-                <div className="inline-actions" style={{ marginTop: "1rem" }}>
-                  <button type="button" className="btn-peach" onClick={() => setProfileMode("edit")}>
-                    Edit profile
-                  </button>
-                </div>
-              </>
-            ) : (
-              <form onSubmit={handleSaveProfileEdit} className="stack">
-                <div className="avatar-uploader" style={{ marginTop: "0.5rem" }}>
-                  <div className="avatar-uploader__preview">
-                    {profile?.avatar_url ? (
-                      <Image
-                        src={profile.avatar_url}
-                        alt=""
-                        width={96}
-                        height={96}
-                        className="avatar-uploader__preview-img"
-                        unoptimized
-                      />
-                    ) : (
-                      <span className="avatar-uploader__fallback">{headerName.charAt(0).toUpperCase()}</span>
-                    )}
-                  </div>
-                  <div className="avatar-uploader__controls">
-                    <label className="avatar-uploader__label">
-                      Choose photo
-                      <input
-                        type="file"
-                        className="avatar-uploader__file"
-                        accept={AVATAR_MIME.join(",")}
-                        onChange={(event) => void handleAvatarFile(event)}
-                        disabled={busy}
-                      />
-                    </label>
-                    {profile?.avatar_url ? (
-                      <button type="button" className="btn-ghost-sm" onClick={handleRemoveAvatar} disabled={busy}>
-                        Remove photo
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-                <p className="hint">JPG, PNG, WebP, or GIF. Max 5MB.</p>
-                <input
-                  placeholder="Display name"
-                  value={editForm.name}
-                  onChange={(event) => setEditForm((p) => ({ ...p, name: event.target.value }))}
-                />
-                <input
-                  placeholder="Country"
-                  value={editForm.country}
-                  onChange={(event) => setEditForm((p) => ({ ...p, country: event.target.value }))}
-                />
-                <div className="inline-actions">
-                  <button type="submit" disabled={busy}>
-                    Save changes
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-ghost-sm"
-                    onClick={() => {
-                      setProfileMode("view");
-                      setMessage("");
-                    }}
+      <section className="card">
+        {profileMode === "view" ? (
+          <>
+            <div className="auth-profile-view">
+              <div className="avatar-uploader__preview auth-profile-view__avatar">
+                {profile?.avatar_url ? (
+                  <Image
+                    src={profile.avatar_url}
+                    alt=""
+                    width={96}
+                    height={96}
+                    className="avatar-uploader__preview-img"
+                    unoptimized
+                  />
+                ) : (
+                  <span className="avatar-uploader__fallback">{headerName.charAt(0).toUpperCase()}</span>
+                )}
+              </div>
+              <dl className="auth-profile-view__dl">
+                <dt>Name</dt>
+                <dd>{profile?.name?.trim() || "—"}</dd>
+                <dt>Email</dt>
+                <dd>{user.email || "—"}</dd>
+                <dt>Country</dt>
+                <dd>{profile?.country?.trim() || "—"}</dd>
+              </dl>
+            </div>
+            <div className="inline-actions" style={{ marginTop: "1rem" }}>
+              <button type="button" className="btn-peach" onClick={() => setProfileMode("edit")}>
+                Edit profile
+              </button>
+            </div>
+          </>
+        ) : (
+          <form onSubmit={handleSaveProfileEdit} className="stack">
+            <div className="avatar-uploader" style={{ marginTop: "0.5rem" }}>
+              <div className="avatar-uploader__preview">
+                {profile?.avatar_url ? (
+                  <Image
+                    src={profile.avatar_url}
+                    alt=""
+                    width={96}
+                    height={96}
+                    className="avatar-uploader__preview-img"
+                    unoptimized
+                  />
+                ) : (
+                  <span className="avatar-uploader__fallback">{headerName.charAt(0).toUpperCase()}</span>
+                )}
+              </div>
+              <div className="avatar-uploader__controls">
+                <label className="avatar-uploader__label">
+                  Choose photo
+                  <input
+                    type="file"
+                    className="avatar-uploader__file"
+                    accept={AVATAR_MIME.join(",")}
+                    onChange={(event) => void handleAvatarFile(event)}
                     disabled={busy}
-                  >
-                    Cancel
+                  />
+                </label>
+                {profile?.avatar_url ? (
+                  <button type="button" className="btn-ghost-sm" onClick={handleRemoveAvatar} disabled={busy}>
+                    Remove photo
                   </button>
-                </div>
-              </form>
-            )}
-          </section>
-
-          <section className="card">
-            <button type="button" className="btn-ghost-sm" onClick={() => void handleSignOut()}>
-              Sign out
-            </button>
-          </section>
-        </>
-      ) : null}
-
-      {user && isAnonymous ? (
-        <div className="auth-page__grid auth-page__grid--stack">
-          <section className="card">
-            <h2 className="font-serif" style={{ marginTop: 0, fontSize: "1.2rem", color: "var(--heading-green)" }}>
-              Add email and password
-            </h2>
-            <p className="hint">
-              Enter the email and password you want for this account. We will send you a link to confirm your email and
-              finish setup. Resources you added while browsing as a guest stay on this account.
-            </p>
-            <form onSubmit={handleFinishGuestAccount} className="stack">
-              <input
-                placeholder="Display name (optional)"
-                value={guestForm.name}
-                onChange={(event) => setGuestField("name", event.target.value)}
-              />
-              <input
-                placeholder="Country (optional)"
-                value={guestForm.country}
-                onChange={(event) => setGuestField("country", event.target.value)}
-              />
-              <input
-                placeholder="Email"
-                type="email"
-                value={guestForm.email}
-                onChange={(event) => setGuestField("email", event.target.value)}
-                required
-                autoComplete="email"
-              />
-              <input
-                placeholder="Password"
-                type="password"
-                value={guestForm.password}
-                onChange={(event) => setGuestField("password", event.target.value)}
-                required
-                autoComplete="new-password"
-              />
-              <button type="submit" className="btn-peach" disabled={busy}>
-                Send confirmation email
+                ) : null}
+              </div>
+            </div>
+            <p className="hint">JPG, PNG, WebP, or GIF. Max 5MB.</p>
+            <input
+              placeholder="Display name"
+              value={editForm.name}
+              onChange={(event) => setEditForm((p) => ({ ...p, name: event.target.value }))}
+            />
+            <input
+              placeholder="Country"
+              value={editForm.country}
+              onChange={(event) => setEditForm((p) => ({ ...p, country: event.target.value }))}
+            />
+            <div className="inline-actions">
+              <button type="submit" disabled={busy}>
+                Save changes
               </button>
-            </form>
-          </section>
-
-          <section className="card">
-            <h2 className="font-serif" style={{ marginTop: 0, fontSize: "1.2rem", color: "var(--heading-green)" }}>
-              Already have an account?
-            </h2>
-            <p className="hint">
-              Signing in here will end this guest session on this device. Posts you made as this guest stay with that
-              guest account unless you finish creating the account above first.
-            </p>
-            <form onSubmit={handleGuestSignInToExisting} className="stack">
-              <input
-                placeholder="Email"
-                type="email"
-                value={guestForm.email}
-                onChange={(event) => setGuestField("email", event.target.value)}
-                required
-                autoComplete="email"
-              />
-              <input
-                placeholder="Password"
-                type="password"
-                value={guestForm.password}
-                onChange={(event) => setGuestField("password", event.target.value)}
-                required
-                autoComplete="current-password"
-              />
-              <button type="submit" className="btn-peach" disabled={busy}>
-                Sign in with existing account
+              <button
+                type="button"
+                className="btn-ghost-sm"
+                onClick={() => {
+                  setProfileMode("view");
+                  setMessage("");
+                }}
+                disabled={busy}
+              >
+                Cancel
               </button>
-            </form>
-          </section>
-        </div>
-      ) : null}
+            </div>
+          </form>
+        )}
+      </section>
+
+      <section className="card">
+        <button type="button" className="btn-ghost-sm" onClick={() => void handleSignOut()}>
+          Sign out
+        </button>
+      </section>
     </main>
   );
 }
