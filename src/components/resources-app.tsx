@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { User } from "@supabase/supabase-js";
 import { missingSupabaseEnv, supabase } from "@/lib/supabase/client";
+import { resolveThumbnailFromUrl } from "@/lib/resolve-thumbnail";
 import { useTheme } from "@/components/theme-provider";
 import {
   AppUser,
@@ -65,6 +66,34 @@ function categoryPlaceholderIcon(category: ResourceCategory): string {
     default:
       return "◇";
   }
+}
+
+function ResourceThumbnail({
+  resolvedUrl,
+  category
+}: {
+  resolvedUrl: string | null;
+  category: ResourceCategory;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (!resolvedUrl || failed) {
+    return (
+      <span className="resource-card__thumb-placeholder" aria-hidden>
+        {categoryPlaceholderIcon(category)}
+      </span>
+    );
+  }
+  return (
+    <Image
+      src={resolvedUrl}
+      alt=""
+      fill
+      sizes="120px"
+      className="resource-card__thumb-img"
+      unoptimized
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 function displayUserName(profile: Profile | null, user: AppUser | null): string {
@@ -512,35 +541,36 @@ export default function ResourcesApp() {
               >
                 Add Resource
               </button>
-              <Link href="/auth" className="site-nav__link">
-                Community
-              </Link>
             </div>
 
             <div className="site-header__right">
               <div className="site-user">
-                <div className="site-user__avatar" aria-hidden>
-                  {myProfile?.avatar_url ? (
-                    <Image
-                      src={myProfile.avatar_url}
-                      alt=""
-                      width={44}
-                      height={44}
-                      className="site-user__avatar-img"
-                      unoptimized
-                    />
-                  ) : (
-                    <span className="site-user__avatar-fallback">
-                      {headerName.charAt(0).toUpperCase()}
-                    </span>
-                  )}
-                </div>
-                <div className="site-user__meta">
+                <Link
+                  href="/auth"
+                  className="site-user__profile-link"
+                  aria-label="Account and profile"
+                >
+                  <div className="site-user__avatar" aria-hidden>
+                    {myProfile?.avatar_url ? (
+                      <Image
+                        src={myProfile.avatar_url}
+                        alt=""
+                        width={44}
+                        height={44}
+                        className="site-user__avatar-img"
+                        unoptimized
+                      />
+                    ) : (
+                      <span className="site-user__avatar-fallback">
+                        {headerName.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
                   <div className="site-user__name">{headerName}</div>
-                  <button type="button" className="site-user__signout" onClick={handleSignOut}>
-                    Sign out
-                  </button>
-                </div>
+                </Link>
+                <button type="button" className="site-user__signout" onClick={handleSignOut}>
+                  Sign out
+                </button>
               </div>
 
               <div className="site-header__actions">
@@ -550,8 +580,16 @@ export default function ResourcesApp() {
                   onClick={toggleTheme}
                   aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
                 >
-                  <span aria-hidden>{theme === "light" ? "☀" : "☾"}</span>
-                  <span>{theme === "light" ? "Light mode" : "Dark mode"}</span>
+                  <span className="theme-toggle__icon" aria-hidden>
+                    {theme === "light" ? "☀" : "☾"}
+                  </span>
+                  <span className="theme-toggle__labels">
+                    <span className={theme === "light" ? "is-active" : undefined}>Light</span>
+                    <span className="theme-toggle__sep" aria-hidden>
+                      /
+                    </span>
+                    <span className={theme === "dark" ? "is-active" : undefined}>Dark</span>
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -705,24 +743,13 @@ export default function ResourcesApp() {
                 const isLiked = likedIds.has(resource.id);
                 const authorName = resource.profiles?.name || "Anonymous contributor";
                 const catLabel = CATEGORY_LABELS[resource.category];
+                const displayThumb =
+                  resource.thumbnail_url ?? resolveThumbnailFromUrl(resource.link);
 
                 return (
                   <li key={resource.id} className="resource-card">
                     <div className="resource-card__thumb">
-                      {resource.thumbnail_url ? (
-                        <Image
-                          src={resource.thumbnail_url}
-                          alt=""
-                          fill
-                          sizes="120px"
-                          className="resource-card__thumb-img"
-                          unoptimized
-                        />
-                      ) : (
-                        <span className="resource-card__thumb-placeholder" aria-hidden>
-                          {categoryPlaceholderIcon(resource.category)}
-                        </span>
-                      )}
+                      <ResourceThumbnail resolvedUrl={displayThumb} category={resource.category} />
                     </div>
                     <div className="resource-card__body">
                       <h3 className="resource-card__title font-serif">

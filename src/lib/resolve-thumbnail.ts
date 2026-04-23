@@ -1,13 +1,7 @@
-// Supabase Edge Function: resolves thumbnail URLs for queued resources.
-// Deploy with: supabase functions deploy thumbnail-resolver
-
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-type ThumbnailJob = {
-  id: string;
-  resource_id: string;
-  link: string;
-};
+/**
+ * Derive a thumbnail image URL from a resource link (client or server).
+ * Used when `thumbnail_url` is missing or edge resolution failed.
+ */
 
 function extractYouTubeVideoId(url: URL): string | null {
   const host = url.hostname.replace(/^www\./, "");
@@ -56,7 +50,10 @@ function normalizeIsbn(raw: string): string | null {
   return null;
 }
 
-function resolveThumbnail(link: string): string | null {
+/**
+ * Returns a direct image URL when the link pattern is known, otherwise null.
+ */
+export function resolveThumbnailFromUrl(link: string): string | null {
   const trimmed = link.trim();
   if (!trimmed) {
     return null;
@@ -95,11 +92,10 @@ function resolveThumbnail(link: string): string | null {
     }
 
     if (host.includes("amazon.") || host.includes("amzn.")) {
-      const id =
-        url.pathname.match(/\/(?:dp|gp\/product|d)\/([0-9A-Z]{10}|[0-9X-]{10,17})/i)?.[1] ??
-        null;
-      if (id) {
-        const isbn = normalizeIsbn(id);
+      const asinOrIsbn =
+        url.pathname.match(/\/(?:dp|gp\/product|d)\/([0-9A-Z]{10}|[0-9X-]{10,17})/i)?.[1] ?? null;
+      if (asinOrIsbn) {
+        const isbn = normalizeIsbn(asinOrIsbn);
         if (isbn) {
           return `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
         }
@@ -108,12 +104,12 @@ function resolveThumbnail(link: string): string | null {
 
     if (host.includes("vimeo.com")) {
       const parts = url.pathname.split("/").filter(Boolean);
-      const vid =
+      const id =
         parts[0] === "channels" || parts[0] === "groups" || parts[0] === "user"
           ? null
           : parts[0];
-      if (vid && /^\d+$/.test(vid)) {
-        return `https://vumbnail.com/${vid}.jpg`;
+      if (id && /^\d+$/.test(id)) {
+        return `https://vumbnail.com/${id}.jpg`;
       }
     }
   } catch {
@@ -122,48 +118,3 @@ function resolveThumbnail(link: string): string | null {
 
   return null;
 }
-
-Deno.serve(async () => {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    return new Response("Missing Supabase env", { status: 500 });
-  }
-
-  const admin = createClient(supabaseUrl, serviceRoleKey);
-
-  const { data: jobs, error: jobsError } = await admin
-    .from("thumbnail_jobs")
-    .select("id,resource_id,link")
-    .eq("status", "pending")
-    .order("created_at", { ascending: true })
-    .limit(25);
-
-  if (jobsError) {
-    return new Response(jobsError.message, { status: 500 });
-  }
-
-  const pendingJobs = (jobs ?? []) as ThumbnailJob[];
-  for (const job of pendingJobs) {
-    const thumbnailUrl = resolveThumbnail(job.link);
-    const updates: Record<string, string | null> = {
-      status: thumbnailUrl ? "done" : "failed",
-      processed_at: new Date().toISOString(),
-      error_message: thumbnailUrl ? null : "Unsupported or unresolved link"
-    };
-
-    if (thumbnailUrl) {
-      await admin
-        .from("resources")
-        .update({ thumbnail_url: thumbnailUrl })
-        .eq("id", job.resource_id);
-    }
-
-    await admin.from("thumbnail_jobs").update(updates).eq("id", job.id);
-  }
-
-  return Response.json({
-    processed: pendingJobs.length
-  });
-});
