@@ -63,11 +63,11 @@ export default function ProfilePage({ userId }: ProfilePageProps) {
         <h1 className="font-serif">{profile?.name || "Contributor"}</h1>
         <p className="subtext">Country: {profile?.country || "Not specified"}</p>
         <div className="inline-actions">
-          <Link href="/">
-            <button type="button">Back to resources</button>
+          <Link href="/" className="btn-peach btn-peach--outline">
+            Back to resources
           </Link>
-          <Link href="/auth">
-            <button type="button">Account page</button>
+          <Link href="/auth" className="btn-peach btn-peach--outline">
+            Account page
           </Link>
         </div>
         {message ? <p className="status">{message}</p> : null}

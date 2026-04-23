@@ -96,8 +96,8 @@ export default function AuthLoginPage() {
         </p>
 
         <div className="inline-actions" style={{ marginTop: "1.25rem" }}>
-          <Link href="/">
-            <button type="button">Back to resources</button>
+          <Link href="/" className="btn-peach btn-peach--outline">
+            Back to resources
           </Link>
         </div>
       </section>

@@ -334,8 +334,8 @@ export default function AuthAccountHub() {
         </h1>
         {message ? <p className="status">{message}</p> : null}
         <div className="inline-actions">
-          <Link href="/">
-            <button type="button">Back to resources</button>
+          <Link href="/" className="btn-peach btn-peach--outline">
+            Back to resources
           </Link>
         </div>
       </section>
