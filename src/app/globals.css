@@ -1040,6 +1040,31 @@ h3 {
   }
 }
 
+.auth-page__single {
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.auth-page__switch {
+  margin: 1.5rem 0 0;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.auth-page__switch-link {
+  color: var(--heading-green);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-page__switch-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .auth-page__card--focus {
   outline: 2px solid color-mix(in srgb, var(--sage) 65%, transparent);
   outline-offset: 3px;

@@ -3,24 +3,13 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { User } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
 import { missingSupabaseEnv, supabase } from "@/lib/supabase/client";
+import { mapAppUser } from "@/lib/map-app-user";
 import type { AppUser, Profile } from "@/lib/types";
 
 const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 const AVATAR_MIME = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
-
-function mapAppUser(user: User | null): AppUser | null {
-  if (!user) {
-    return null;
-  }
-  return {
-    id: user.id,
-    email: user.email,
-    is_anonymous: user.is_anonymous
-  };
-}
 
 function displayName(profile: Profile | null, user: AppUser | null): string {
   if (profile?.name?.trim()) {
@@ -45,16 +34,15 @@ function mimeToExt(mime: string): string {
   return "gif";
 }
 
-export default function AuthHub() {
-  const searchParams = useSearchParams();
-  const tabParam = searchParams.get("tab");
-
+export default function AuthAccountHub() {
+  const router = useRouter();
   const [user, setUser] = useState<AppUser | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [profileMode, setProfileMode] = useState<"view" | "edit">("view");
-  const [authForm, setAuthForm] = useState({
+  const [guestForm, setGuestForm] = useState({
     email: "",
     password: "",
     name: "",
@@ -91,6 +79,7 @@ export default function AuthHub() {
       setMessage(
         "Missing Supabase env vars. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local."
       );
+      setSessionReady(true);
       return;
     }
 
@@ -104,6 +93,7 @@ export default function AuthHub() {
         return;
       }
       setUser(mapAppUser(session?.user ?? null));
+      setSessionReady(true);
     }
 
     void loadSession();
@@ -119,6 +109,15 @@ export default function AuthHub() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!sessionReady) {
+      return;
+    }
+    if (!user) {
+      router.replace("/auth/register");
+    }
+  }, [sessionReady, user, router]);
 
   useEffect(() => {
     if (missingSupabaseEnv || !user) {
@@ -137,8 +136,8 @@ export default function AuthHub() {
     }
   }, [profile, profileMode]);
 
-  function setAuthField(key: "email" | "password" | "name" | "country", value: string) {
-    setAuthForm((prev) => ({ ...prev, [key]: value }));
+  function setGuestField(key: "email" | "password" | "name" | "country", value: string) {
+    setGuestForm((prev) => ({ ...prev, [key]: value }));
   }
 
   async function handleAvatarFile(event: ChangeEvent<HTMLInputElement>) {
@@ -223,8 +222,8 @@ export default function AuthHub() {
     setBusy(true);
     const { error: updateError } = await supabase.auth.updateUser(
       {
-        email: authForm.email.trim(),
-        password: authForm.password
+        email: guestForm.email.trim(),
+        password: guestForm.password
       },
       {
         emailRedirectTo: getEmailRedirectTo()
@@ -239,8 +238,8 @@ export default function AuthHub() {
 
     const { error: profileError } = await supabase.from("profiles").upsert({
       id: user.id,
-      name: authForm.name.trim() || null,
-      country: authForm.country.trim() || null
+      name: guestForm.name.trim() || null,
+      country: guestForm.country.trim() || null
     });
     setBusy(false);
 
@@ -264,8 +263,8 @@ export default function AuthHub() {
     setBusy(true);
     await supabase.auth.signOut();
     const { error } = await supabase.auth.signInWithPassword({
-      email: authForm.email.trim(),
-      password: authForm.password
+      email: guestForm.email.trim(),
+      password: guestForm.password
     });
     setBusy(false);
 
@@ -274,55 +273,7 @@ export default function AuthHub() {
       return;
     }
 
-    setMessage("Signed in.");
-  }
-
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (missingSupabaseEnv) {
-      return;
-    }
-
-    setBusy(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: authForm.email.trim(),
-      password: authForm.password
-    });
-    setBusy(false);
-
-    setMessage(error ? error.message : "Signed in.");
-  }
-
-  async function handleRegister(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (missingSupabaseEnv) {
-      return;
-    }
-
-    setBusy(true);
-    const { data, error } = await supabase.auth.signUp({
-      email: authForm.email.trim(),
-      password: authForm.password,
-      options: {
-        emailRedirectTo: getEmailRedirectTo()
-      }
-    });
-
-    const createdUserId = data.user?.id;
-    if (!error && createdUserId) {
-      await supabase.from("profiles").upsert({
-        id: createdUserId,
-        name: authForm.name.trim() || null,
-        country: authForm.country.trim() || null
-      });
-    }
-    setBusy(false);
-
-    setMessage(
-      error
-        ? error.message
-        : "Account created. If email confirmation is on, check your inbox to finish signing up."
-    );
+    router.replace("/");
   }
 
   async function handleSaveProfileEdit(event: FormEvent<HTMLFormElement>) {
@@ -359,23 +310,27 @@ export default function AuthHub() {
     setProfile(null);
     setProfileMode("view");
     setMessage("Signed out.");
+    router.replace("/auth/register");
   }
 
-  const highlightLogin = tabParam === "login";
-  const highlightRegister = tabParam !== "login";
+  if (!sessionReady || !user) {
+    return (
+      <main className="page auth-page">
+        <p className="subtext">Loading…</p>
+      </main>
+    );
+  }
 
   return (
     <main className="page auth-page">
       <section className="card">
         <p className="eyebrow">Account</p>
         <h1 className="font-serif">
-          {!user
-            ? "Sign in or register"
-            : isAnonymous
-              ? "Finish your account"
-              : profileMode === "edit"
-                ? "Edit profile"
-                : "Your profile"}
+          {isAnonymous
+            ? "Finish your account"
+            : profileMode === "edit"
+              ? "Edit profile"
+              : "Your profile"}
         </h1>
         {message ? <p className="status">{message}</p> : null}
         <div className="inline-actions">
@@ -384,81 +339,6 @@ export default function AuthHub() {
           </Link>
         </div>
       </section>
-
-      {!user ? (
-        <div className="auth-page__grid">
-          <section
-            className={`card auth-page__card${highlightRegister ? " auth-page__card--focus" : ""}`}
-            id="register"
-          >
-            <h2 className="font-serif" style={{ marginTop: 0, fontSize: "1.2rem", color: "var(--heading-green)" }}>
-              Create an account
-            </h2>
-            <p className="hint">Add your email and a password. You may need to confirm your email to finish.</p>
-            <form onSubmit={handleRegister} className="stack">
-              <input
-                placeholder="Display name (optional)"
-                value={authForm.name}
-                onChange={(event) => setAuthField("name", event.target.value)}
-                autoComplete="name"
-              />
-              <input
-                placeholder="Country (optional)"
-                value={authForm.country}
-                onChange={(event) => setAuthField("country", event.target.value)}
-                autoComplete="country-name"
-              />
-              <input
-                placeholder="Email"
-                type="email"
-                value={authForm.email}
-                onChange={(event) => setAuthField("email", event.target.value)}
-                required
-                autoComplete="email"
-              />
-              <input
-                placeholder="Password"
-                type="password"
-                value={authForm.password}
-                onChange={(event) => setAuthField("password", event.target.value)}
-                required
-                autoComplete="new-password"
-              />
-              <button type="submit" disabled={busy}>
-                Create account
-              </button>
-            </form>
-          </section>
-
-          <section className={`card auth-page__card${highlightLogin ? " auth-page__card--focus" : ""}`} id="login">
-            <h2 className="font-serif" style={{ marginTop: 0, fontSize: "1.2rem", color: "var(--heading-green)" }}>
-              Sign in
-            </h2>
-            <p className="hint">Use the email and password for your existing account.</p>
-            <form onSubmit={handleLogin} className="stack">
-              <input
-                placeholder="Email"
-                type="email"
-                value={authForm.email}
-                onChange={(event) => setAuthField("email", event.target.value)}
-                required
-                autoComplete="email"
-              />
-              <input
-                placeholder="Password"
-                type="password"
-                value={authForm.password}
-                onChange={(event) => setAuthField("password", event.target.value)}
-                required
-                autoComplete="current-password"
-              />
-              <button type="submit" disabled={busy}>
-                Sign in
-              </button>
-            </form>
-          </section>
-        </div>
-      ) : null}
 
       {user && !isAnonymous ? (
         <>
@@ -576,37 +456,37 @@ export default function AuthHub() {
               Add email and password
             </h2>
             <p className="hint">
-              Enter the email and password you want for this account. We will send you a link to confirm your email
-              and finish setup. Resources you added while browsing as a guest stay on this account.
+              Enter the email and password you want for this account. We will send you a link to confirm your email and
+              finish setup. Resources you added while browsing as a guest stay on this account.
             </p>
             <form onSubmit={handleFinishGuestAccount} className="stack">
               <input
                 placeholder="Display name (optional)"
-                value={authForm.name}
-                onChange={(event) => setAuthField("name", event.target.value)}
+                value={guestForm.name}
+                onChange={(event) => setGuestField("name", event.target.value)}
               />
               <input
                 placeholder="Country (optional)"
-                value={authForm.country}
-                onChange={(event) => setAuthField("country", event.target.value)}
+                value={guestForm.country}
+                onChange={(event) => setGuestField("country", event.target.value)}
               />
               <input
                 placeholder="Email"
                 type="email"
-                value={authForm.email}
-                onChange={(event) => setAuthField("email", event.target.value)}
+                value={guestForm.email}
+                onChange={(event) => setGuestField("email", event.target.value)}
                 required
                 autoComplete="email"
               />
               <input
                 placeholder="Password"
                 type="password"
-                value={authForm.password}
-                onChange={(event) => setAuthField("password", event.target.value)}
+                value={guestForm.password}
+                onChange={(event) => setGuestField("password", event.target.value)}
                 required
                 autoComplete="new-password"
               />
-              <button type="submit" disabled={busy}>
+              <button type="submit" className="btn-peach" disabled={busy}>
                 Send confirmation email
               </button>
             </form>
@@ -624,20 +504,20 @@ export default function AuthHub() {
               <input
                 placeholder="Email"
                 type="email"
-                value={authForm.email}
-                onChange={(event) => setAuthField("email", event.target.value)}
+                value={guestForm.email}
+                onChange={(event) => setGuestField("email", event.target.value)}
                 required
                 autoComplete="email"
               />
               <input
                 placeholder="Password"
                 type="password"
-                value={authForm.password}
-                onChange={(event) => setAuthField("password", event.target.value)}
+                value={guestForm.password}
+                onChange={(event) => setGuestField("password", event.target.value)}
                 required
                 autoComplete="current-password"
               />
-              <button type="submit" disabled={busy}>
+              <button type="submit" className="btn-peach" disabled={busy}>
                 Sign in with existing account
               </button>
             </form>

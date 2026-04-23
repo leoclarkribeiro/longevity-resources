@@ -3,8 +3,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { User } from "@supabase/supabase-js";
 import { missingSupabaseEnv, supabase } from "@/lib/supabase/client";
+import { mapAppUser } from "@/lib/map-app-user";
 import { resolveThumbnailFromUrl } from "@/lib/resolve-thumbnail";
 import { useTheme } from "@/components/theme-provider";
 import {
@@ -35,17 +35,6 @@ const defaultForm: ResourceForm = {
 };
 
 type RawResourceRow = Omit<ResourceRow, "profiles">;
-
-function mapAppUser(user: User | null): AppUser | null {
-  if (!user) {
-    return null;
-  }
-  return {
-    id: user.id,
-    email: user.email,
-    is_anonymous: user.is_anonymous
-  };
-}
 
 function scrollToSection(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -598,10 +587,10 @@ export default function ResourcesApp() {
                 </div>
                 {!user ? (
                   <div className="site-user site-user--auth-cta">
-                    <Link href="/auth?tab=register" className="btn-peach">
+                    <Link href="/auth/register" className="btn-peach">
                       Create account
                     </Link>
-                    <Link href="/auth?tab=login" className="btn-peach btn-peach--outline">
+                    <Link href="/auth/login" className="btn-peach btn-peach--outline">
                       Sign in
                     </Link>
                   </div>
@@ -634,13 +623,13 @@ export default function ResourcesApp() {
                     </Link>
                     {isAnonymous ? (
                       <div className="site-user__guest-links">
-                        <Link href="/auth?tab=login" className="site-user__inline-link">
+                        <Link href="/auth/login" className="site-user__inline-link">
                           Sign in
                         </Link>
                         <span className="site-user__guest-sep" aria-hidden>
                           ·
                         </span>
-                        <Link href="/auth?tab=register" className="site-user__inline-link">
+                        <Link href="/auth/register" className="site-user__inline-link">
                           Register
                         </Link>
                       </div>
@@ -688,11 +677,11 @@ export default function ResourcesApp() {
           </p>
           {!user ? (
             <p className="hero__auth-cta">
-              <Link href="/auth?tab=register" className="hero__auth-cta-link">
+              <Link href="/auth/register" className="hero__auth-cta-link">
                 Create an account
               </Link>
               <span className="hero__auth-cta-sep"> · </span>
-              <Link href="/auth?tab=login" className="hero__auth-cta-link">
+              <Link href="/auth/login" className="hero__auth-cta-link">
                 Sign in
               </Link>
             </p>
@@ -725,11 +714,11 @@ export default function ResourcesApp() {
                 <button type="button" className="btn-peach" onClick={() => void continueAsGuestFromGate()}>
                   Continue as guest
                 </button>
-                <Link href="/auth?tab=login" className="btn-peach btn-peach--outline" onClick={() => setAuthGateOpen(false)}>
+                <Link href="/auth/login" className="btn-peach btn-peach--outline" onClick={() => setAuthGateOpen(false)}>
                   Sign in
                 </Link>
                 <Link
-                  href="/auth?tab=register"
+                  href="/auth/register"
                   className="btn-peach btn-peach--outline"
                   onClick={() => setAuthGateOpen(false)}
                 >

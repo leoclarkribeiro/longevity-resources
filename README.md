@@ -6,7 +6,7 @@ Minimalist longevity resources database with optional social features.
 
 Phase 2 core MVP flow is in progress:
 
-- Routes: `/` (resources), `/auth` (login/register/upgrade), `/profile/[id]` (contributor page)
+- Routes: `/` (resources), `/auth` (account when signed in), `/auth/login`, `/auth/register`, `/profile/[id]` (contributor page)
 - Supabase client helper in `src/lib/supabase`
 - Migrations for schema, RLS, profile bootstrap trigger, and thumbnail job queue
 - Supabase edge function scaffold in `supabase/functions/thumbnail-resolver`
