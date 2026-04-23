@@ -453,12 +453,37 @@ export default function ResourcesApp() {
     }
 
     const alreadyLiked = likedIds.has(resourceId);
+    const snapshotLiked = new Set(likedIds);
+    const snapshotResources = resources;
+
+    setLikedIds((prev) => {
+      const next = new Set(prev);
+      if (alreadyLiked) {
+        next.delete(resourceId);
+      } else {
+        next.add(resourceId);
+      }
+      return next;
+    });
+    setResources((prev) =>
+      prev.map((r) =>
+        r.id !== resourceId
+          ? r
+          : {
+              ...r,
+              likes_count: alreadyLiked ? Math.max(0, r.likes_count - 1) : r.likes_count + 1
+            }
+      )
+    );
+
     const request = alreadyLiked
       ? supabase.from("resource_likes").delete().eq("resource_id", resourceId).eq("user_id", user.id)
       : supabase.from("resource_likes").insert({ resource_id: resourceId, user_id: user.id });
 
     const { error } = await request;
     if (error) {
+      setLikedIds(snapshotLiked);
+      setResources(snapshotResources);
       setMessage(error.message);
       return;
     }
@@ -776,17 +801,24 @@ export default function ResourcesApp() {
                       <div className="resource-card__actions">
                         <button
                           type="button"
-                          className="btn-like"
+                          className={isLiked ? "btn-like btn-like--active" : "btn-like"}
                           onClick={() => void handleToggleLike(resource.id)}
                           disabled={!canSocialAct}
+                          aria-pressed={isLiked}
                           title={
                             canSocialAct
-                              ? "Toggle like"
+                              ? isLiked
+                                ? "Remove like"
+                                : "Like"
                               : "Sign in with a full account to like"
                           }
                         >
-                          <span aria-hidden>♥</span>
-                          {isLiked ? " Unlike" : " Like"} ({resource.likes_count})
+                          <span className="btn-like__heart" aria-hidden>
+                            ♥
+                          </span>
+                          {isLiked ? (
+                            <span className="btn-like__count">{resource.likes_count}</span>
+                          ) : null}
                         </button>
                         <button
                           type="button"

@@ -589,19 +589,45 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.45rem 0.75rem;
+  padding: 0.35rem 0.45rem;
   border-radius: var(--radius-pill);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
   font-size: 0.85rem;
   cursor: pointer;
   font-family: inherit;
+  line-height: 1;
 }
 
-.btn-like:hover:not(:disabled) {
-  border-color: var(--peach);
+.btn-like__heart {
+  font-size: 1.35rem;
+  line-height: 1;
+  color: var(--text-muted);
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.btn-like__count {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0.5rem;
+}
+
+.btn-like--active .btn-like__heart {
+  color: #e11d48;
+}
+
+.btn-like--active .btn-like__count {
+  color: #e11d48;
+}
+
+.btn-like:hover:not(:disabled) .btn-like__heart {
   color: var(--heading-green);
+}
+
+.btn-like--active:hover:not(:disabled) .btn-like__heart {
+  color: #be123c;
 }
 
 .btn-like:disabled {
