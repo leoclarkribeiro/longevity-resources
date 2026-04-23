@@ -1,15 +1,20 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { User } from "@supabase/supabase-js";
 import { missingSupabaseEnv, supabase } from "@/lib/supabase/client";
+import type { Profile } from "@/lib/types";
 
 type AppUser = {
   id: string;
   email?: string;
   is_anonymous?: boolean;
 };
+
+const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+const AVATAR_MIME = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
 
 function mapAppUser(user: User | null): AppUser | null {
   if (!user) {
@@ -23,8 +28,32 @@ function mapAppUser(user: User | null): AppUser | null {
   };
 }
 
+function displayName(profile: Profile | null, user: AppUser | null): string {
+  if (profile?.name?.trim()) {
+    return profile.name.trim();
+  }
+  if (user?.email) {
+    return user.email.split("@")[0] ?? "You";
+  }
+  return "Guest";
+}
+
+function mimeToExt(mime: string): string {
+  if (mime === "image/jpeg") {
+    return "jpg";
+  }
+  if (mime === "image/png") {
+    return "png";
+  }
+  if (mime === "image/webp") {
+    return "webp";
+  }
+  return "gif";
+}
+
 export default function AuthHub() {
   const [user, setUser] = useState<AppUser | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [authForm, setAuthForm] = useState({
@@ -35,6 +64,21 @@ export default function AuthHub() {
   });
 
   const isAnonymous = Boolean(user?.is_anonymous);
+  const headerName = displayName(profile, user);
+
+  const loadProfile = useCallback(async (userId: string) => {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id,name,country,avatar_url")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    setProfile(data as Profile | null);
+  }, []);
 
   function getEmailRedirectTo() {
     if (typeof window === "undefined") {
@@ -87,8 +131,89 @@ export default function AuthHub() {
     };
   }, []);
 
+  useEffect(() => {
+    if (missingSupabaseEnv || !user) {
+      setProfile(null);
+      return;
+    }
+    void loadProfile(user.id);
+  }, [user, loadProfile]);
+
   function setAuthField(key: "email" | "password" | "name" | "country", value: string) {
     setAuthForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleAvatarFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !user || missingSupabaseEnv) {
+      return;
+    }
+
+    if (!AVATAR_MIME.includes(file.type as (typeof AVATAR_MIME)[number])) {
+      setMessage("Please choose a JPEG, PNG, WebP, or GIF image.");
+      return;
+    }
+    if (file.size > AVATAR_MAX_BYTES) {
+      setMessage("Image must be 5MB or smaller.");
+      return;
+    }
+
+    setBusy(true);
+    const ext = mimeToExt(file.type);
+    const path = `${user.id}/avatar.${ext}`;
+
+    const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, {
+      upsert: true,
+      contentType: file.type,
+      cacheControl: "3600"
+    });
+
+    if (uploadError) {
+      setBusy(false);
+      setMessage(uploadError.message);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
+    const publicUrl = urlData.publicUrl;
+
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({ avatar_url: publicUrl })
+      .eq("id", user.id);
+
+    setBusy(false);
+
+    if (profileError) {
+      setMessage(profileError.message);
+      return;
+    }
+
+    setProfile((prev) =>
+      prev
+        ? { ...prev, avatar_url: publicUrl }
+        : { id: user.id, name: null, country: null, avatar_url: publicUrl }
+    );
+    setMessage("Profile photo updated.");
+  }
+
+  async function handleRemoveAvatar() {
+    if (!user || missingSupabaseEnv) {
+      return;
+    }
+
+    setBusy(true);
+    const { error } = await supabase.from("profiles").update({ avatar_url: null }).eq("id", user.id);
+    setBusy(false);
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setProfile((prev) => (prev ? { ...prev, avatar_url: null } : null));
+    setMessage("Profile photo removed.");
   }
 
   async function handleUpgradeGuest(event: FormEvent<HTMLFormElement>) {
@@ -129,6 +254,7 @@ export default function AuthHub() {
     setMessage(
       "Upgrade started. Check your email to confirm, then you will return to this site."
     );
+    await loadProfile(user.id);
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -183,7 +309,7 @@ export default function AuthHub() {
     <main className="page">
       <section className="card">
         <p className="eyebrow">Account</p>
-        <h1>Login or upgrade</h1>
+        <h1 className="font-serif">Sign in or upgrade</h1>
         <p className="subtext">
           Session: <strong>{isAnonymous ? "Guest" : "Registered"}</strong>
           {user?.email ? ` (${user.email})` : ""}
@@ -195,6 +321,50 @@ export default function AuthHub() {
           </Link>
         </div>
       </section>
+
+      {user ? (
+        <section className="card">
+          <h2 className="font-serif" style={{ marginTop: 0, fontSize: "1.25rem", color: "var(--heading-green)" }}>
+            Profile photo
+          </h2>
+          <p className="hint">
+            JPG, PNG, WebP, or GIF. Max 5MB. Shown in the header after you save.
+          </p>
+          <div className="avatar-uploader" style={{ marginTop: "1rem" }}>
+            <div className="avatar-uploader__preview">
+              {profile?.avatar_url ? (
+                <Image
+                  src={profile.avatar_url}
+                  alt=""
+                  width={96}
+                  height={96}
+                  className="avatar-uploader__preview-img"
+                  unoptimized
+                />
+              ) : (
+                <span className="avatar-uploader__fallback">{headerName.charAt(0).toUpperCase()}</span>
+              )}
+            </div>
+            <div className="avatar-uploader__controls">
+              <label className="avatar-uploader__label">
+                Choose photo
+                <input
+                  type="file"
+                  className="avatar-uploader__file"
+                  accept={AVATAR_MIME.join(",")}
+                  onChange={(event) => void handleAvatarFile(event)}
+                  disabled={busy}
+                />
+              </label>
+              {profile?.avatar_url ? (
+                <button type="button" className="btn-ghost-sm" onClick={handleRemoveAvatar} disabled={busy}>
+                  Remove photo
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="card auth-grid">
         {isAnonymous ? (

@@ -1,11 +1,14 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { User } from "@supabase/supabase-js";
+import Image from "next/image";
 import Link from "next/link";
+import { User } from "@supabase/supabase-js";
 import { missingSupabaseEnv, supabase } from "@/lib/supabase/client";
+import { useTheme } from "@/components/theme-provider";
 import {
   AppUser,
+  CATEGORY_LABELS,
   Profile,
   RESOURCE_CATEGORIES,
   ResourceCategory,
@@ -14,6 +17,7 @@ import {
 
 type SortKey = "created_at" | "likes_count" | "author";
 type SortDirection = "asc" | "desc";
+type CategoryFilter = "all" | ResourceCategory;
 
 type ResourceForm = {
   name: string;
@@ -35,7 +39,6 @@ function mapAppUser(user: User | null): AppUser | null {
   if (!user) {
     return null;
   }
-
   return {
     id: user.id,
     email: user.email,
@@ -43,8 +46,41 @@ function mapAppUser(user: User | null): AppUser | null {
   };
 }
 
+function scrollToSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function categoryPlaceholderIcon(category: ResourceCategory): string {
+  switch (category) {
+    case "video":
+      return "▶";
+    case "podcast":
+      return "🎙";
+    case "book":
+      return "📖";
+    case "article":
+      return "📄";
+    case "services":
+      return "✦";
+    default:
+      return "◇";
+  }
+}
+
+function displayUserName(profile: Profile | null, user: AppUser | null): string {
+  if (profile?.name?.trim()) {
+    return profile.name.trim();
+  }
+  if (user?.email) {
+    return user.email.split("@")[0] ?? "Guest";
+  }
+  return "Guest";
+}
+
 export default function ResourcesApp() {
+  const { theme, toggleTheme } = useTheme();
   const [user, setUser] = useState<AppUser | null>(null);
+  const [myProfile, setMyProfile] = useState<Profile | null>(null);
   const [resources, setResources] = useState<ResourceRow[]>([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
@@ -52,16 +88,18 @@ export default function ResourcesApp() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [loadingResources, setLoadingResources] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>("");
 
   const isAnonymous = Boolean(user?.is_anonymous);
   const canSocialAct = Boolean(user && !isAnonymous);
+  const headerName = displayUserName(myProfile, user);
 
   const sortedResources = useMemo(() => {
     const copy = [...resources];
-
     copy.sort((a, b) => {
       let compare = 0;
       if (sortKey === "created_at") {
@@ -73,12 +111,25 @@ export default function ResourcesApp() {
         const authorB = (b.profiles?.name || "").toLowerCase();
         compare = authorA.localeCompare(authorB);
       }
-
       return sortDirection === "asc" ? compare : compare * -1;
     });
-
     return copy;
   }, [resources, sortDirection, sortKey]);
+
+  const displayedResources = useMemo(() => {
+    let list = sortedResources;
+    if (categoryFilter !== "all") {
+      list = list.filter((r) => r.category === categoryFilter);
+    }
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter((r) => {
+        const hay = `${r.name} ${r.description ?? ""} ${r.link}`.toLowerCase();
+        return hay.includes(q);
+      });
+    }
+    return list;
+  }, [sortedResources, categoryFilter, searchQuery]);
 
   async function ensureUserSession(options?: { announce?: boolean }) {
     const { announce = false } = options ?? {};
@@ -100,19 +151,15 @@ export default function ResourcesApp() {
 
     const { data, error } = await supabase.auth.signInAnonymously();
     if (error) {
-      setMessage(
-        `Could not create anonymous session. ${error.message}`
-      );
+      setMessage(`Could not create anonymous session. ${error.message}`);
       return null;
     }
 
     const guestUser = mapAppUser(data.user);
     setUser(guestUser);
-
     if (announce) {
       setMessage("Anonymous session ready. You can add resources now.");
     }
-
     return guestUser;
   }
 
@@ -149,13 +196,32 @@ export default function ResourcesApp() {
   }, []);
 
   useEffect(() => {
+    if (missingSupabaseEnv || !user) {
+      setMyProfile(null);
+      return;
+    }
+
+    void supabase
+      .from("profiles")
+      .select("id,name,country,avatar_url")
+      .eq("id", user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setMyProfile(data as Profile);
+        } else {
+          setMyProfile(null);
+        }
+      });
+  }, [user]);
+
+  useEffect(() => {
     if (missingSupabaseEnv) {
       return;
     }
 
     async function fetchResources() {
       setLoadingResources(true);
-
       const { data, error } = await supabase
         .from("resources")
         .select(
@@ -234,9 +300,7 @@ export default function ResourcesApp() {
       return [] as ResourceRow[];
     }
 
-    const authorIds = Array.from(
-      new Set(rawResources.map((resource) => resource.created_by))
-    );
+    const authorIds = Array.from(new Set(rawResources.map((resource) => resource.created_by)));
 
     const { data: profilesData, error: profilesError } = await supabase
       .from("profiles")
@@ -319,6 +383,16 @@ export default function ResourcesApp() {
     setResourceForm(defaultForm);
     setEditingId(null);
     await reloadResources();
+    void supabase
+      .from("profiles")
+      .select("id,name,country,avatar_url")
+      .eq("id", activeUser.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setMyProfile(data as Profile);
+        }
+      });
   }
 
   async function handleDelete(id: string) {
@@ -408,104 +482,197 @@ export default function ResourcesApp() {
 
     await supabase.auth.signOut();
     await ensureUserSession();
+    setMyProfile(null);
     setMessage("Signed out. A fresh anonymous session was started.");
   }
 
   return (
-    <main className="page">
-      <section className="card">
-        <p className="eyebrow">Longevity Resources</p>
-        <h1>Longevity database MVP</h1>
-        <p className="subtext">
-          Guest posting is enabled. Registered users can like resources and follow
-          contributors.
-        </p>
-        {message ? <p className="status">{message}</p> : null}
-      </section>
-
-      <section className="card">
-        <h2>Account</h2>
-        <p className="subtext">
-          {user ? (
-            <>
-              Current session: <strong>{isAnonymous ? "Guest" : "Registered"}</strong>
-              {user.email ? ` (${user.email})` : ""}
-            </>
-          ) : (
-            "Loading session..."
-          )}
-        </p>
-
-        <div className="inline-actions">
-          <Link href="/auth">
-            <button type="button">Manage account</button>
+    <div className="site-shell">
+      <header className="site-header">
+        <div className="site-header__inner">
+          <Link href="/" className="site-logo font-serif">
+            Longevity
+            <br />
+            Resources
           </Link>
-          <button type="button" onClick={handleSignOut}>
-            Sign out
-          </button>
+
+          <nav className="site-nav" aria-label="Primary">
+            <div className="site-nav__links">
+              <button
+                type="button"
+                className="site-nav__link"
+                onClick={() => scrollToSection("community-resources")}
+              >
+                Browse
+              </button>
+              <button
+                type="button"
+                className="site-nav__link"
+                onClick={() => scrollToSection("add-resource-form")}
+              >
+                Add Resource
+              </button>
+              <Link href="/auth" className="site-nav__link">
+                Community
+              </Link>
+            </div>
+
+            <div className="site-header__right">
+              <div className="site-user">
+                <div className="site-user__avatar" aria-hidden>
+                  {myProfile?.avatar_url ? (
+                    <Image
+                      src={myProfile.avatar_url}
+                      alt=""
+                      width={44}
+                      height={44}
+                      className="site-user__avatar-img"
+                      unoptimized
+                    />
+                  ) : (
+                    <span className="site-user__avatar-fallback">
+                      {headerName.charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div className="site-user__meta">
+                  <div className="site-user__name">{headerName}</div>
+                  <button type="button" className="site-user__signout" onClick={handleSignOut}>
+                    Sign out
+                  </button>
+                </div>
+              </div>
+
+              <div className="site-header__actions">
+                <button
+                  type="button"
+                  className="theme-toggle"
+                  onClick={toggleTheme}
+                  aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+                >
+                  <span aria-hidden>{theme === "light" ? "☀" : "☾"}</span>
+                  <span>{theme === "light" ? "Light mode" : "Dark mode"}</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn-peach"
+                  onClick={() => scrollToSection("add-resource-form")}
+                >
+                  Add New Resource
+                </button>
+              </div>
+            </div>
+          </nav>
+        </div>
+      </header>
+
+      <section className="hero" aria-labelledby="hero-heading">
+        <div className="hero__inner">
+          <h1 id="hero-heading" className="hero__title font-serif">
+            Curate Your Path to a Longer, Healthier Life
+          </h1>
+          <p className="hero__subtitle">
+            A minimalist, community-driven database of the best longevity resources. Share,
+            discover, and follow fellow enthusiasts.
+          </p>
         </div>
       </section>
 
-      <section className="card">
-        <h2>{editingId ? "Edit resource" : "Add resource"}</h2>
-        <form onSubmit={handleResourceSubmit} className="stack">
-          <input
-            value={resourceForm.name}
-            onChange={(event) => setResourceField("name", event.target.value)}
-            placeholder="Name"
-            required
-          />
-          <input
-            value={resourceForm.link}
-            onChange={(event) => setResourceField("link", event.target.value)}
-            placeholder="Link"
-            type="url"
-            required
-          />
-          <select
-            value={resourceForm.category}
-            onChange={(event) =>
-              setResourceField("category", event.target.value as ResourceCategory)
-            }
-          >
-            {RESOURCE_CATEGORIES.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </select>
-          <textarea
-            value={resourceForm.description}
-            onChange={(event) => setResourceField("description", event.target.value)}
-            placeholder="Description (optional)"
-            rows={3}
-          />
-          <div className="inline-actions">
-            <button type="submit" disabled={busy}>
-              {editingId ? "Save changes" : "Add resource"}
-            </button>
-            {editingId ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingId(null);
-                  setResourceForm(defaultForm);
-                }}
-              >
-                Cancel edit
-              </button>
-            ) : null}
-          </div>
-        </form>
-      </section>
+      <main className="site-main">
+        {message ? <p className="toast-status">{message}</p> : null}
 
-      <section className="card">
-        <div className="header-row">
-          <h2>Resources</h2>
-          <div className="sort-controls">
-            <label>
-              Sort by
+        <section id="add-resource-form" className="add-form-panel">
+          <h2>{editingId ? "Edit resource" : "Add a resource"}</h2>
+          <form onSubmit={handleResourceSubmit} className="form-stack">
+            <input
+              value={resourceForm.name}
+              onChange={(event) => setResourceField("name", event.target.value)}
+              placeholder="Name"
+              required
+            />
+            <input
+              value={resourceForm.link}
+              onChange={(event) => setResourceField("link", event.target.value)}
+              placeholder="Link (URL)"
+              type="url"
+              required
+            />
+            <select
+              value={resourceForm.category}
+              onChange={(event) =>
+                setResourceField("category", event.target.value as ResourceCategory)
+              }
+            >
+              {RESOURCE_CATEGORIES.map((category) => (
+                <option key={category} value={category}>
+                  {CATEGORY_LABELS[category]}
+                </option>
+              ))}
+            </select>
+            <textarea
+              value={resourceForm.description}
+              onChange={(event) => setResourceField("description", event.target.value)}
+              placeholder="Description (optional)"
+              rows={3}
+            />
+            <div className="form-actions">
+              <button type="submit" className="btn-peach" disabled={busy}>
+                {editingId ? "Save changes" : "Submit resource"}
+              </button>
+              {editingId ? (
+                <button
+                  type="button"
+                  className="btn-ghost-sm"
+                  onClick={() => {
+                    setEditingId(null);
+                    setResourceForm(defaultForm);
+                  }}
+                >
+                  Cancel edit
+                </button>
+              ) : null}
+            </div>
+          </form>
+        </section>
+
+        <section id="community-resources" className="panel">
+          <h2 className="panel__title font-serif">Community Resources</h2>
+
+          <div className="toolbar">
+            <div className="toolbar__search-wrap">
+              <span className="toolbar__search-icon" aria-hidden>
+                ⌕
+              </span>
+              <input
+                className="toolbar__search"
+                type="search"
+                placeholder="Search by name or keyword..."
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                aria-label="Search resources"
+              />
+            </div>
+            <div className="toolbar__field">
+              <label htmlFor="filter-category">Category</label>
               <select
+                id="filter-category"
+                value={categoryFilter}
+                onChange={(event) =>
+                  setCategoryFilter(event.target.value as CategoryFilter)
+                }
+              >
+                <option value="all">All categories</option>
+                {RESOURCE_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {CATEGORY_LABELS[c]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="toolbar__field">
+              <label htmlFor="filter-sort">Sort by</label>
+              <select
+                id="filter-sort"
                 value={sortKey}
                 onChange={(event) => setSortKey(event.target.value as SortKey)}
               >
@@ -513,101 +680,139 @@ export default function ResourcesApp() {
                 <option value="likes_count">Likes</option>
                 <option value="author">Author</option>
               </select>
-            </label>
-            <label>
-              Direction
+            </div>
+            <div className="toolbar__field">
+              <label htmlFor="filter-order">Order</label>
               <select
+                id="filter-order"
                 value={sortDirection}
                 onChange={(event) =>
                   setSortDirection(event.target.value as SortDirection)
                 }
               >
-                <option value="asc">Ascending</option>
                 <option value="desc">Descending</option>
+                <option value="asc">Ascending</option>
               </select>
-            </label>
+            </div>
           </div>
-        </div>
 
-        {loadingResources ? <p>Loading resources...</p> : null}
+          {loadingResources ? (
+            <p className="subtext">Loading resources…</p>
+          ) : (
+            <ul className="resource-cards">
+              {displayedResources.map((resource) => {
+                const isOwner = user?.id === resource.created_by;
+                const isLiked = likedIds.has(resource.id);
+                const authorName = resource.profiles?.name || "Anonymous contributor";
+                const catLabel = CATEGORY_LABELS[resource.category];
 
-        <ul className="resource-list">
-          {sortedResources.map((resource) => {
-            const isOwner = user?.id === resource.created_by;
-            const isLiked = likedIds.has(resource.id);
-            const authorName = resource.profiles?.name || "Anonymous contributor";
-
-            return (
-              <li key={resource.id} className="resource-item">
-                <div className="resource-main">
-                  <p className="resource-meta">
-                    {resource.category} ·{" "}
-                    <Link href={`/profile/${resource.created_by}`}>{authorName}</Link>{" "}
-                    ·{" "}
-                    {new Date(resource.created_at).toLocaleDateString()}
-                  </p>
-                  <h3>
-                    <a href={resource.link} target="_blank" rel="noreferrer">
-                      {resource.name}
-                    </a>
-                  </h3>
-                  {resource.description ? (
-                    <p className="subtext">{resource.description}</p>
-                  ) : null}
-                </div>
-
-                <div className="inline-actions">
-                  <button
-                    type="button"
-                    onClick={() => void handleToggleLike(resource.id)}
-                    disabled={!canSocialAct}
-                    title={
-                      canSocialAct
-                        ? "Toggle like"
-                        : "Likes are for registered users only"
-                    }
-                  >
-                    {isLiked ? "Unlike" : "Like"} ({resource.likes_count})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleToggleFollow(resource.created_by)}
-                    disabled={!canSocialAct || resource.created_by === user?.id}
-                    title={
-                      canSocialAct
-                        ? "Toggle follow"
-                        : "Follow is for registered users only"
-                    }
-                  >
-                    {followingIds.has(resource.created_by) ? "Unfollow" : "Follow"}
-                  </button>
-                  {isOwner ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingId(resource.id);
-                          setResourceForm({
-                            name: resource.name,
-                            link: resource.link,
-                            category: resource.category,
-                            description: resource.description ?? ""
-                          });
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button type="button" onClick={() => void handleDelete(resource.id)}>
-                        Delete
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
-    </main>
+                return (
+                  <li key={resource.id} className="resource-card">
+                    <div className="resource-card__thumb">
+                      {resource.thumbnail_url ? (
+                        <Image
+                          src={resource.thumbnail_url}
+                          alt=""
+                          fill
+                          sizes="120px"
+                          className="resource-card__thumb-img"
+                          unoptimized
+                        />
+                      ) : (
+                        <span className="resource-card__thumb-placeholder" aria-hidden>
+                          {categoryPlaceholderIcon(resource.category)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="resource-card__body">
+                      <h3 className="resource-card__title font-serif">
+                        <a href={resource.link} target="_blank" rel="noreferrer">
+                          {resource.name}
+                        </a>
+                      </h3>
+                      <p className="resource-card__meta">
+                        <span className="cat">{catLabel}</span>
+                        {" · Added by "}
+                        <Link href={`/profile/${resource.created_by}`} className="inline-link">
+                          {authorName}
+                        </Link>
+                        {" on "}
+                        {new Date(resource.created_at).toLocaleDateString(undefined, {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric"
+                        })}
+                      </p>
+                      {resource.description ? (
+                        <p className="resource-card__desc">{resource.description}</p>
+                      ) : null}
+                      <div className="resource-card__actions">
+                        <button
+                          type="button"
+                          className="btn-like"
+                          onClick={() => void handleToggleLike(resource.id)}
+                          disabled={!canSocialAct}
+                          title={
+                            canSocialAct
+                              ? "Toggle like"
+                              : "Sign in with a full account to like"
+                          }
+                        >
+                          <span aria-hidden>♥</span>
+                          {isLiked ? " Unlike" : " Like"} ({resource.likes_count})
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-follow"
+                          onClick={() => void handleToggleFollow(resource.created_by)}
+                          disabled={!canSocialAct || resource.created_by === user?.id}
+                          title={
+                            canSocialAct
+                              ? "Follow contributor"
+                              : "Sign in with a full account to follow"
+                          }
+                        >
+                          {followingIds.has(resource.created_by)
+                            ? `Unfollow ${authorName}`
+                            : `Follow ${authorName}`}
+                        </button>
+                        <span className="pill-category">{catLabel}</span>
+                        {isOwner ? (
+                          <>
+                            <button
+                              type="button"
+                              className="btn-ghost-sm"
+                              onClick={() => {
+                                setEditingId(resource.id);
+                                setResourceForm({
+                                  name: resource.name,
+                                  link: resource.link,
+                                  category: resource.category,
+                                  description: resource.description ?? ""
+                                });
+                                scrollToSection("add-resource-form");
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-ghost-sm"
+                              onClick={() => void handleDelete(resource.id)}
+                            >
+                              Delete
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </main>
+    </div>
   );
 }

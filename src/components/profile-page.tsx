@@ -60,7 +60,7 @@ export default function ProfilePage({ userId }: ProfilePageProps) {
     <main className="page">
       <section className="card">
         <p className="eyebrow">Profile</p>
-        <h1>{profile?.name || "Contributor"}</h1>
+        <h1 className="font-serif">{profile?.name || "Contributor"}</h1>
         <p className="subtext">Country: {profile?.country || "Not specified"}</p>
         <div className="inline-actions">
           <Link href="/">
