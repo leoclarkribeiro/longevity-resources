@@ -387,34 +387,6 @@ export default function AuthHub() {
 
       {!user ? (
         <div className="auth-page__grid">
-          <section className={`card auth-page__card${highlightLogin ? " auth-page__card--focus" : ""}`} id="login">
-            <h2 className="font-serif" style={{ marginTop: 0, fontSize: "1.2rem", color: "var(--heading-green)" }}>
-              Sign in
-            </h2>
-            <p className="hint">Use the email and password for your existing account.</p>
-            <form onSubmit={handleLogin} className="stack">
-              <input
-                placeholder="Email"
-                type="email"
-                value={authForm.email}
-                onChange={(event) => setAuthField("email", event.target.value)}
-                required
-                autoComplete="email"
-              />
-              <input
-                placeholder="Password"
-                type="password"
-                value={authForm.password}
-                onChange={(event) => setAuthField("password", event.target.value)}
-                required
-                autoComplete="current-password"
-              />
-              <button type="submit" disabled={busy}>
-                Sign in
-              </button>
-            </form>
-          </section>
-
           <section
             className={`card auth-page__card${highlightRegister ? " auth-page__card--focus" : ""}`}
             id="register"
@@ -454,6 +426,34 @@ export default function AuthHub() {
               />
               <button type="submit" disabled={busy}>
                 Create account
+              </button>
+            </form>
+          </section>
+
+          <section className={`card auth-page__card${highlightLogin ? " auth-page__card--focus" : ""}`} id="login">
+            <h2 className="font-serif" style={{ marginTop: 0, fontSize: "1.2rem", color: "var(--heading-green)" }}>
+              Sign in
+            </h2>
+            <p className="hint">Use the email and password for your existing account.</p>
+            <form onSubmit={handleLogin} className="stack">
+              <input
+                placeholder="Email"
+                type="email"
+                value={authForm.email}
+                onChange={(event) => setAuthField("email", event.target.value)}
+                required
+                autoComplete="email"
+              />
+              <input
+                placeholder="Password"
+                type="password"
+                value={authForm.password}
+                onChange={(event) => setAuthField("password", event.target.value)}
+                required
+                autoComplete="current-password"
+              />
+              <button type="submit" disabled={busy}>
+                Sign in
               </button>
             </form>
           </section>
