@@ -101,6 +101,41 @@ function decodeHtmlEntities(value: string): string {
     .replace(/&#39;/gi, "'");
 }
 
+function extractYouTubeVideoId(url: URL): string | null {
+  const host = url.hostname.replace(/^www\./, "").toLowerCase();
+  if (host === "youtu.be") {
+    const id = url.pathname.replace(/^\/+/, "").split("/")[0];
+    return id && /^[\w-]{11}$/.test(id) ? id : null;
+  }
+  if (!host.includes("youtube.com")) {
+    return null;
+  }
+  const direct = url.searchParams.get("v");
+  if (direct && /^[\w-]{11}$/.test(direct)) {
+    return direct;
+  }
+  const parts = url.pathname.split("/").filter(Boolean);
+  const shortsIdx = parts.indexOf("shorts");
+  if (shortsIdx >= 0 && parts[shortsIdx + 1] && /^[\w-]{11}$/.test(parts[shortsIdx + 1])) {
+    return parts[shortsIdx + 1];
+  }
+  const embedIdx = parts.indexOf("embed");
+  if (embedIdx >= 0 && parts[embedIdx + 1] && /^[\w-]{11}$/.test(parts[embedIdx + 1])) {
+    return parts[embedIdx + 1];
+  }
+  return null;
+}
+
+function looksGenericYouTubeMetadata(title: string, description: string): boolean {
+  const normalizedTitle = title.trim().toLowerCase();
+  const normalizedDescription = description.trim().toLowerCase();
+  return (
+    normalizedTitle === "youtube" ||
+    normalizedTitle === "- youtube" ||
+    normalizedDescription.includes("enjoy the videos and music you love")
+  );
+}
+
 function toAbsoluteUrl(value: string | null, baseUrl: URL): string | null {
   if (!value) {
     return null;
@@ -109,6 +144,72 @@ function toAbsoluteUrl(value: string | null, baseUrl: URL): string | null {
     return new URL(value, baseUrl).toString();
   } catch {
     return null;
+  }
+}
+
+async function fetchYouTubeFallback(videoId: string): Promise<Partial<PreviewPayload>> {
+  let title = "";
+  let description = "";
+  let thumbnailUrl: string | null = null;
+
+  try {
+    const watchUrl = `https://www.youtube.com/watch?v=${videoId}&hl=en`;
+    const watchResponse = await fetch(watchUrl, {
+      headers: {
+        "user-agent": "LongevityResourcesBot/1.0 (+metadata preview)",
+        accept: "text/html,application/xhtml+xml"
+      },
+      signal: AbortSignal.timeout(9000),
+      redirect: "follow"
+    });
+    if (watchResponse.ok) {
+      const watchHtml = await watchResponse.text();
+      title = decodeHtmlEntities(getTitle(watchHtml) ?? title);
+      description = decodeHtmlEntities(
+        getMetaContent(watchHtml, "og:description") ??
+          getMetaContent(watchHtml, "description") ??
+          getMetaContent(watchHtml, "twitter:description") ??
+          description
+      );
+      thumbnailUrl = toAbsoluteUrl(
+        decodeHtmlEntities(
+          getMetaContent(watchHtml, "og:image") ??
+            getMetaContent(watchHtml, "twitter:image") ??
+            getMetaContent(watchHtml, "twitter:image:src") ??
+            ""
+        ),
+        new URL(watchUrl)
+      );
+    }
+  } catch {
+    // Best-effort fallback path.
+  }
+
+  if (title && !looksGenericYouTubeMetadata(title, description)) {
+    return { title, description, thumbnailUrl };
+  }
+
+  try {
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(
+      `https://youtu.be/${videoId}`
+    )}&format=json`;
+    const oembedResponse = await fetch(oembedUrl, {
+      signal: AbortSignal.timeout(7000)
+    });
+    if (!oembedResponse.ok) {
+      return { title, description, thumbnailUrl };
+    }
+    const oembed = (await oembedResponse.json()) as {
+      title?: string;
+      thumbnail_url?: string;
+    };
+    return {
+      title: oembed.title?.trim() || title,
+      description,
+      thumbnailUrl: oembed.thumbnail_url ?? thumbnailUrl
+    };
+  } catch {
+    return { title, description, thumbnailUrl };
   }
 }
 
@@ -214,14 +315,14 @@ export async function GET(request: NextRequest) {
     }
 
     const html = await response.text();
-    const title = decodeHtmlEntities(getTitle(html) ?? "");
-    const description = decodeHtmlEntities(
+    let title = decodeHtmlEntities(getTitle(html) ?? "");
+    let description = decodeHtmlEntities(
       getMetaContent(html, "og:description") ??
         getMetaContent(html, "description") ??
         getMetaContent(html, "twitter:description") ??
         ""
     );
-    const thumbnailUrl = toAbsoluteUrl(
+    let thumbnailUrl = toAbsoluteUrl(
       decodeHtmlEntities(
         getMetaContent(html, "og:image") ??
           getMetaContent(html, "twitter:image") ??
@@ -230,6 +331,23 @@ export async function GET(request: NextRequest) {
       ),
       targetUrl
     );
+
+    const youtubeVideoId = extractYouTubeVideoId(targetUrl);
+    if (!title || looksGenericYouTubeMetadata(title, description) || !thumbnailUrl) {
+      if (youtubeVideoId) {
+        const ytFallback = await fetchYouTubeFallback(youtubeVideoId);
+        if (ytFallback.title?.trim()) {
+          title = ytFallback.title.trim();
+        }
+        if (ytFallback.description?.trim()) {
+          description = ytFallback.description.trim();
+        }
+        if (ytFallback.thumbnailUrl) {
+          thumbnailUrl = ytFallback.thumbnailUrl;
+        }
+      }
+    }
+
     const inferredCategory = inferCategory(targetUrl.hostname, targetUrl.pathname, title, description);
     const category = CATEGORY_SET.has(inferredCategory) ? inferredCategory : FALLBACK_CATEGORY;
 
