@@ -122,6 +122,7 @@ export default function ResourcesApp() {
   const [busy, setBusy] = useState(false);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [lastPreviewUrl, setLastPreviewUrl] = useState("");
+  const [previewThumbnailUrl, setPreviewThumbnailUrl] = useState<string | null>(null);
   const [message, setMessage] = useState<string>("");
   const [authGateOpen, setAuthGateOpen] = useState(false);
 
@@ -358,6 +359,7 @@ export default function ResourcesApp() {
         title?: string;
         description?: string;
         category?: ResourceCategory;
+        thumbnailUrl?: string | null;
         error?: string;
       };
 
@@ -372,6 +374,7 @@ export default function ResourcesApp() {
         category: payload.category ?? prev.category,
         description: payload.description?.trim() || prev.description
       }));
+      setPreviewThumbnailUrl(payload.thumbnailUrl ?? null);
       setLastPreviewUrl(normalizedUrl);
       setMessage("Auto-filled title, category, and description. You can edit before saving.");
     } catch {
@@ -465,7 +468,7 @@ export default function ResourcesApp() {
     const derivedThumbnail = resolveThumbnailFromUrl(payload.link);
     const rowPayload = {
       ...payload,
-      thumbnail_url: derivedThumbnail
+      thumbnail_url: previewThumbnailUrl ?? derivedThumbnail
     };
 
     const request = editingId
@@ -484,6 +487,7 @@ export default function ResourcesApp() {
     setResourceForm(defaultForm);
     setEditingId(null);
     setLastPreviewUrl("");
+    setPreviewThumbnailUrl(null);
     await reloadResources();
     void supabase
       .from("profiles")
@@ -800,6 +804,7 @@ export default function ResourcesApp() {
               onChange={(event) => {
                 setResourceField("link", event.target.value);
                 setLastPreviewUrl("");
+                setPreviewThumbnailUrl(null);
               }}
               onBlur={() => void handleAutoFillFromLink()}
               placeholder="Link (URL)"
@@ -849,6 +854,7 @@ export default function ResourcesApp() {
                     setEditingId(null);
                     setResourceForm(defaultForm);
                     setLastPreviewUrl("");
+                    setPreviewThumbnailUrl(null);
                   }}
                 >
                   Cancel edit
@@ -1012,6 +1018,7 @@ export default function ResourcesApp() {
                                   description: resource.description ?? ""
                                 });
                                 setLastPreviewUrl("");
+                                setPreviewThumbnailUrl(resource.thumbnail_url ?? null);
                                 scrollToSection("add-resource-form");
                               }}
                             >

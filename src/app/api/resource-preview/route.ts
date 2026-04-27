@@ -5,6 +5,7 @@ type PreviewPayload = {
   title: string;
   description: string;
   category: ResourceCategory;
+  thumbnailUrl: string | null;
 };
 
 const FALLBACK_CATEGORY: ResourceCategory = "article";
@@ -81,6 +82,17 @@ function decodeHtmlEntities(value: string): string {
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'");
+}
+
+function toAbsoluteUrl(value: string | null, baseUrl: URL): string | null {
+  if (!value) {
+    return null;
+  }
+  try {
+    return new URL(value, baseUrl).toString();
+  } catch {
+    return null;
+  }
 }
 
 function inferCategory(
@@ -192,13 +204,23 @@ export async function GET(request: NextRequest) {
         getMetaContent(html, "twitter:description") ??
         ""
     );
+    const thumbnailUrl = toAbsoluteUrl(
+      decodeHtmlEntities(
+        getMetaContent(html, "og:image") ??
+          getMetaContent(html, "twitter:image") ??
+          getMetaContent(html, "twitter:image:src") ??
+          ""
+      ),
+      targetUrl
+    );
     const inferredCategory = inferCategory(targetUrl.hostname, targetUrl.pathname, title, description);
     const category = CATEGORY_SET.has(inferredCategory) ? inferredCategory : FALLBACK_CATEGORY;
 
     const payload: PreviewPayload = {
       title,
       description,
-      category
+      category,
+      thumbnailUrl
     };
     return NextResponse.json(payload);
   } catch {
