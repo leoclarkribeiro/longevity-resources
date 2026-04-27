@@ -120,6 +120,8 @@ export default function ResourcesApp() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loadingResources, setLoadingResources] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [lastPreviewUrl, setLastPreviewUrl] = useState("");
   const [message, setMessage] = useState<string>("");
   const [authGateOpen, setAuthGateOpen] = useState(false);
 
@@ -330,6 +332,55 @@ export default function ResourcesApp() {
     setResourceForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  async function handleAutoFillFromLink() {
+    const link = resourceForm.link.trim();
+    if (!link) {
+      setMessage("Paste a link first, then auto-fill.");
+      return;
+    }
+
+    let normalizedUrl = "";
+    try {
+      normalizedUrl = new URL(link).toString();
+    } catch {
+      setMessage("Please enter a valid URL before auto-fill.");
+      return;
+    }
+
+    if (normalizedUrl === lastPreviewUrl) {
+      return;
+    }
+
+    setPreviewBusy(true);
+    try {
+      const response = await fetch(`/api/resource-preview?url=${encodeURIComponent(normalizedUrl)}`);
+      const payload = (await response.json()) as {
+        title?: string;
+        description?: string;
+        category?: ResourceCategory;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        setMessage(payload.error || "Could not auto-fill this link.");
+        return;
+      }
+
+      setResourceForm((prev) => ({
+        ...prev,
+        name: payload.title?.trim() || prev.name,
+        category: payload.category ?? prev.category,
+        description: payload.description?.trim() || prev.description
+      }));
+      setLastPreviewUrl(normalizedUrl);
+      setMessage("Auto-filled title, category, and description. You can edit before saving.");
+    } catch {
+      setMessage("Could not auto-fill this link right now.");
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
   async function enrichResourcesWithProfiles(rawResources: RawResourceRow[]) {
     if (rawResources.length === 0) {
       return [] as ResourceRow[];
@@ -432,6 +483,7 @@ export default function ResourcesApp() {
     setMessage(editingId ? "Resource updated." : "Resource added.");
     setResourceForm(defaultForm);
     setEditingId(null);
+    setLastPreviewUrl("");
     await reloadResources();
     void supabase
       .from("profiles")
@@ -745,11 +797,28 @@ export default function ResourcesApp() {
             />
             <input
               value={resourceForm.link}
-              onChange={(event) => setResourceField("link", event.target.value)}
+              onChange={(event) => {
+                setResourceField("link", event.target.value);
+                setLastPreviewUrl("");
+              }}
+              onBlur={() => void handleAutoFillFromLink()}
               placeholder="Link (URL)"
               type="url"
               required
             />
+            <div className="resource-preview-row">
+              <button
+                type="button"
+                className="btn-primary-outline"
+                onClick={() => void handleAutoFillFromLink()}
+                disabled={previewBusy || !resourceForm.link.trim()}
+              >
+                {previewBusy ? "Auto-filling..." : "Auto-fill from link"}
+              </button>
+              <span className="resource-preview-hint">
+                We suggest details from the URL; you can edit any field.
+              </span>
+            </div>
             <select
               value={resourceForm.category}
               onChange={(event) =>
@@ -779,6 +848,7 @@ export default function ResourcesApp() {
                   onClick={() => {
                     setEditingId(null);
                     setResourceForm(defaultForm);
+                    setLastPreviewUrl("");
                   }}
                 >
                   Cancel edit
@@ -941,6 +1011,7 @@ export default function ResourcesApp() {
                                   category: resource.category,
                                   description: resource.description ?? ""
                                 });
+                                setLastPreviewUrl("");
                                 scrollToSection("add-resource-form");
                               }}
                             >
