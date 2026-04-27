@@ -152,20 +152,64 @@ function firstTwoSentences(value: string): string {
   return `${parts[0]} ${parts[1]}`.trim();
 }
 
-function extractYouTubeShortDescription(html: string): string {
-  const jsonEscaped =
-    html.match(/"shortDescription":"((?:[^"\\]|\\.)*)"/)?.[1] ??
-    html.match(/"description":{"simpleText":"((?:[^"\\]|\\.)*)"}/)?.[1] ??
-    "";
-  if (!jsonEscaped) {
-    return "";
-  }
+function unescapeJsonString(value: string): string {
   try {
-    const decoded = JSON.parse(`"${jsonEscaped}"`) as string;
-    return firstTwoSentences(decoded);
+    return JSON.parse(`"${value}"`) as string;
   } catch {
-    return firstTwoSentences(jsonEscaped.replace(/\\n/g, "\n"));
+    return value
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\r")
+      .replace(/\\t/g, "\t")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\");
   }
+}
+
+function extractJsonLdDescription(html: string): string {
+  const scripts = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) ?? [];
+  for (const script of scripts) {
+    const body = script
+      .replace(/<script[^>]*>/i, "")
+      .replace(/<\/script>/i, "")
+      .trim();
+    if (!body) {
+      continue;
+    }
+    try {
+      const data = JSON.parse(body) as
+        | { description?: string; "@type"?: string }
+        | Array<{ description?: string; "@type"?: string }>;
+      const items = Array.isArray(data) ? data : [data];
+      for (const item of items) {
+        if (item?.description?.trim()) {
+          return firstTwoSentences(decodeHtmlEntities(item.description));
+        }
+      }
+    } catch {
+      // Keep scanning other json-ld scripts.
+    }
+  }
+  return "";
+}
+
+function extractYouTubeShortDescription(html: string): string {
+  const candidates = [
+    /"shortDescription":"((?:[^"\\]|\\.)*)"/,
+    /"description":{"simpleText":"((?:[^"\\]|\\.)*)"}/,
+    /"attributedDescriptionBodyText":\{"content":"((?:[^"\\]|\\.)*)"/
+  ];
+  for (const pattern of candidates) {
+    const match = html.match(pattern);
+    if (!match?.[1]) {
+      continue;
+    }
+    const decoded = unescapeJsonString(match[1]);
+    const short = firstTwoSentences(decoded);
+    if (short) {
+      return short;
+    }
+  }
+  return extractJsonLdDescription(html);
 }
 
 function toAbsoluteUrl(value: string | null, baseUrl: URL): string | null {
@@ -377,6 +421,9 @@ export async function GET(request: NextRequest) {
       }
       if (ytFallback.thumbnailUrl) {
         thumbnailUrl = ytFallback.thumbnailUrl;
+      }
+      if (!description.trim()) {
+        description = `Watch "${title}" on YouTube.`;
       }
     }
 
