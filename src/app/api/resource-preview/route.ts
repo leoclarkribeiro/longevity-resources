@@ -367,18 +367,16 @@ export async function GET(request: NextRequest) {
     );
 
     const youtubeVideoId = extractYouTubeVideoId(targetUrl);
-    if (!title || looksGenericYouTubeMetadata(title, description) || !thumbnailUrl) {
-      if (youtubeVideoId) {
-        const ytFallback = await fetchYouTubeFallback(youtubeVideoId);
-        if (ytFallback.title?.trim()) {
-          title = ytFallback.title.trim();
-        }
-        if (ytFallback.description?.trim()) {
-          description = ytFallback.description.trim();
-        }
-        if (ytFallback.thumbnailUrl) {
-          thumbnailUrl = ytFallback.thumbnailUrl;
-        }
+    if (youtubeVideoId) {
+      const ytFallback = await fetchYouTubeFallback(youtubeVideoId);
+      if (ytFallback.title?.trim()) {
+        title = ytFallback.title.trim();
+      }
+      if (ytFallback.description?.trim()) {
+        description = ytFallback.description.trim();
+      }
+      if (ytFallback.thumbnailUrl) {
+        thumbnailUrl = ytFallback.thumbnailUrl;
       }
     }
 

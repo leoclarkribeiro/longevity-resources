@@ -354,7 +354,10 @@ export default function ResourcesApp() {
 
     setPreviewBusy(true);
     try {
-      const response = await fetch(`/api/resource-preview?url=${encodeURIComponent(normalizedUrl)}`);
+      const response = await fetch(
+        `/api/resource-preview?url=${encodeURIComponent(normalizedUrl)}&t=${Date.now()}`,
+        { cache: "no-store" }
+      );
       const payload = (await response.json()) as {
         title?: string;
         description?: string;
