@@ -126,6 +126,11 @@ function extractYouTubeVideoId(url: URL): string | null {
   return null;
 }
 
+function isSpotifyHost(hostname: string): boolean {
+  const host = hostname.replace(/^www\./, "").toLowerCase();
+  return host === "open.spotify.com" || host.endsWith(".spotify.com");
+}
+
 function looksGenericYouTubeMetadata(title: string, description: string): boolean {
   const normalizedTitle = title.trim().toLowerCase();
   const normalizedDescription = description.trim().toLowerCase();
@@ -133,6 +138,18 @@ function looksGenericYouTubeMetadata(title: string, description: string): boolea
     normalizedTitle === "youtube" ||
     normalizedTitle === "- youtube" ||
     normalizedDescription.includes("enjoy the videos and music you love")
+  );
+}
+
+function looksGenericSpotifyDescription(description: string): boolean {
+  const normalized = description.trim().toLowerCase();
+  return (
+    !normalized ||
+    normalized === "spotify · episode" ||
+    normalized.includes("spotify · episode") ||
+    normalized.includes("spotify · song") ||
+    normalized.includes("spotify · album") ||
+    normalized.includes("spotify · playlist")
   );
 }
 
@@ -190,6 +207,19 @@ function extractJsonLdDescription(html: string): string {
     }
   }
   return "";
+}
+
+function extractSpotifyDescriptionFromHtml(html: string): string {
+  const raw = extractJsonLdDescription(html);
+  if (!raw) {
+    return "";
+  }
+
+  const withoutBoilerplate = raw.replace(
+    /^listen to this (?:episode|podcast|song|album|playlist) from .*? on spotify\.?\s*/i,
+    ""
+  );
+  return firstTwoSentences(withoutBoilerplate);
 }
 
 function extractYouTubeShortDescription(html: string): string {
@@ -424,6 +454,13 @@ export async function GET(request: NextRequest) {
       }
       if (!description.trim()) {
         description = `Watch "${title}" on YouTube.`;
+      }
+    } else if (isSpotifyHost(targetUrl.hostname)) {
+      if (looksGenericSpotifyDescription(description)) {
+        const spotifyDescription = extractSpotifyDescriptionFromHtml(html);
+        if (spotifyDescription) {
+          description = spotifyDescription;
+        }
       }
     }
 
