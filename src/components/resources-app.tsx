@@ -121,7 +121,6 @@ export default function ResourcesApp() {
   const [loadingResources, setLoadingResources] = useState(true);
   const [busy, setBusy] = useState(false);
   const [previewBusy, setPreviewBusy] = useState(false);
-  const [lastPreviewUrl, setLastPreviewUrl] = useState("");
   const [previewThumbnailUrl, setPreviewThumbnailUrl] = useState<string | null>(null);
   const [message, setMessage] = useState<string>("");
   const [authGateOpen, setAuthGateOpen] = useState(false);
@@ -348,10 +347,6 @@ export default function ResourcesApp() {
       return;
     }
 
-    if (normalizedUrl === lastPreviewUrl) {
-      return;
-    }
-
     setPreviewBusy(true);
     try {
       const response = await fetch(
@@ -378,7 +373,6 @@ export default function ResourcesApp() {
         description: payload.description?.trim() || prev.description
       }));
       setPreviewThumbnailUrl(payload.thumbnailUrl ?? null);
-      setLastPreviewUrl(normalizedUrl);
       setMessage("Auto-filled title, category, and description. You can edit before saving.");
     } catch {
       setMessage("Could not auto-fill this link right now.");
@@ -489,7 +483,6 @@ export default function ResourcesApp() {
     setMessage(editingId ? "Resource updated." : "Resource added.");
     setResourceForm(defaultForm);
     setEditingId(null);
-    setLastPreviewUrl("");
     setPreviewThumbnailUrl(null);
     await reloadResources();
     void supabase
@@ -806,7 +799,6 @@ export default function ResourcesApp() {
               value={resourceForm.link}
               onChange={(event) => {
                 setResourceField("link", event.target.value);
-                setLastPreviewUrl("");
                 setPreviewThumbnailUrl(null);
               }}
               onBlur={() => void handleAutoFillFromLink()}
@@ -856,7 +848,6 @@ export default function ResourcesApp() {
                   onClick={() => {
                     setEditingId(null);
                     setResourceForm(defaultForm);
-                    setLastPreviewUrl("");
                     setPreviewThumbnailUrl(null);
                   }}
                 >
@@ -1020,7 +1011,6 @@ export default function ResourcesApp() {
                                   category: resource.category,
                                   description: resource.description ?? ""
                                 });
-                                setLastPreviewUrl("");
                                 setPreviewThumbnailUrl(resource.thumbnail_url ?? null);
                                 scrollToSection("add-resource-form");
                               }}
