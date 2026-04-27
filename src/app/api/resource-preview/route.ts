@@ -136,6 +136,38 @@ function looksGenericYouTubeMetadata(title: string, description: string): boolea
   );
 }
 
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function firstTwoSentences(value: string): string {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) {
+    return "";
+  }
+  const parts = normalized.split(/(?<=[.!?])\s+/).filter(Boolean);
+  if (parts.length <= 2) {
+    return normalized;
+  }
+  return `${parts[0]} ${parts[1]}`.trim();
+}
+
+function extractYouTubeShortDescription(html: string): string {
+  const jsonEscaped =
+    html.match(/"shortDescription":"((?:[^"\\]|\\.)*)"/)?.[1] ??
+    html.match(/"description":{"simpleText":"((?:[^"\\]|\\.)*)"}/)?.[1] ??
+    "";
+  if (!jsonEscaped) {
+    return "";
+  }
+  try {
+    const decoded = JSON.parse(`"${jsonEscaped}"`) as string;
+    return firstTwoSentences(decoded);
+  } catch {
+    return firstTwoSentences(jsonEscaped.replace(/\\n/g, "\n"));
+  }
+}
+
 function toAbsoluteUrl(value: string | null, baseUrl: URL): string | null {
   if (!value) {
     return null;
@@ -165,12 +197,14 @@ async function fetchYouTubeFallback(videoId: string): Promise<Partial<PreviewPay
     if (watchResponse.ok) {
       const watchHtml = await watchResponse.text();
       title = decodeHtmlEntities(getTitle(watchHtml) ?? title);
-      description = decodeHtmlEntities(
+      const metaDescription = decodeHtmlEntities(
         getMetaContent(watchHtml, "og:description") ??
           getMetaContent(watchHtml, "description") ??
           getMetaContent(watchHtml, "twitter:description") ??
           description
       );
+      const shortDescription = extractYouTubeShortDescription(watchHtml);
+      description = shortDescription || metaDescription;
       thumbnailUrl = toAbsoluteUrl(
         decodeHtmlEntities(
           getMetaContent(watchHtml, "og:image") ??
@@ -186,7 +220,7 @@ async function fetchYouTubeFallback(videoId: string): Promise<Partial<PreviewPay
   }
 
   if (title && !looksGenericYouTubeMetadata(title, description)) {
-    return { title, description, thumbnailUrl };
+    return { title, description: firstTwoSentences(description), thumbnailUrl };
   }
 
   try {
@@ -205,11 +239,11 @@ async function fetchYouTubeFallback(videoId: string): Promise<Partial<PreviewPay
     };
     return {
       title: oembed.title?.trim() || title,
-      description,
+      description: firstTwoSentences(description),
       thumbnailUrl: oembed.thumbnail_url ?? thumbnailUrl
     };
   } catch {
-    return { title, description, thumbnailUrl };
+    return { title, description: firstTwoSentences(description), thumbnailUrl };
   }
 }
 
