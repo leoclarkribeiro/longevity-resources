@@ -57,13 +57,30 @@ const CATEGORY_TERMS: Record<ResourceCategory, string[]> = {
 };
 
 function getMetaContent(html: string, key: string): string | null {
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(
-    `<meta[^>]+(?:name|property)=["']${escapedKey}["'][^>]*content=["']([^"']+)["'][^>]*>`,
-    "i"
-  );
-  const match = html.match(pattern);
-  return match?.[1]?.trim() || null;
+  const targetKey = key.toLowerCase();
+  const metaTags = html.match(/<meta\b[^>]*>/gi) ?? [];
+
+  for (const tag of metaTags) {
+    const attrs: Record<string, string> = {};
+    const attrPattern = /([^\s=]+)\s*=\s*["']([^"']*)["']/g;
+    let attrMatch: RegExpExecArray | null = attrPattern.exec(tag);
+    while (attrMatch) {
+      attrs[attrMatch[1].toLowerCase()] = attrMatch[2];
+      attrMatch = attrPattern.exec(tag);
+    }
+
+    const metaKey = (attrs.property ?? attrs.name ?? "").toLowerCase();
+    if (metaKey !== targetKey) {
+      continue;
+    }
+
+    const content = attrs.content?.trim();
+    if (content) {
+      return content;
+    }
+  }
+
+  return null;
 }
 
 function getTitle(html: string): string | null {
