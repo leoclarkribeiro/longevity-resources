@@ -156,6 +156,11 @@ function isAmazonHost(hostname: string): boolean {
   return host.includes("amazon.");
 }
 
+function isSubstackHost(hostname: string): boolean {
+  const host = hostname.replace(/^www\./, "").toLowerCase();
+  return host === "substack.com" || host.endsWith(".substack.com");
+}
+
 function extractAmazonAsinOrIsbn(url: URL): string | null {
   const match =
     url.pathname.match(/\/(?:dp|gp\/product|d)\/([0-9A-Z]{10}|[0-9X-]{10,17})/i)?.[1] ?? null;
@@ -323,6 +328,24 @@ function firstFourSentences(value: string): string {
   return firstSentences(value, 4);
 }
 
+function looksTruncatedDescription(value: string): boolean {
+  const normalized = normalizeWhitespace(value).toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  const trailingAbbrev = [
+    "mr.",
+    "mrs.",
+    "ms.",
+    "dr.",
+    "prof.",
+    "sr.",
+    "jr.",
+    "st."
+  ];
+  return trailingAbbrev.some((abbrev) => normalized.endsWith(abbrev));
+}
+
 function unescapeJsonString(value: string): string {
   try {
     return JSON.parse(`"${value}"`) as string;
@@ -417,6 +440,31 @@ function extractSpotifyDescriptionFromHtml(html: string): string {
     ""
   );
   return firstTwoSentences(withoutBoilerplate);
+}
+
+function extractSubstackLeadDescriptionFromHtml(html: string): string {
+  const articleMatch = html.match(/<article[\s\S]*?<\/article>/i);
+  if (!articleMatch) {
+    return "";
+  }
+  const paragraphMatches = articleMatch[0].match(/<p[^>]*>[\s\S]*?<\/p>/gi) ?? [];
+  const cleanedParagraphs = paragraphMatches
+    .map((paragraph) =>
+      normalizeWhitespace(
+        decodeHtmlEntities(paragraph.replace(/<[^>]+>/g, " "))
+      )
+    )
+    .filter((text) => text.length >= 60)
+    .filter(
+      (text) =>
+        !/article voiceover|audio playback is not supported|subscribe|sign in/i.test(text)
+    );
+
+  if (cleanedParagraphs.length === 0) {
+    return "";
+  }
+
+  return firstSentences(cleanedParagraphs.slice(0, 3).join(" "), 3);
 }
 
 function extractYouTubeShortDescription(html: string): string {
@@ -775,6 +823,13 @@ export async function GET(request: NextRequest) {
         const spotifyDescription = extractSpotifyDescriptionFromHtml(html);
         if (spotifyDescription) {
           description = spotifyDescription;
+        }
+      }
+    } else if (isSubstackHost(targetUrl.hostname)) {
+      if (looksTruncatedDescription(description)) {
+        const substackDescription = extractSubstackLeadDescriptionFromHtml(html);
+        if (substackDescription) {
+          description = substackDescription;
         }
       }
     } else if (amazonHost) {
