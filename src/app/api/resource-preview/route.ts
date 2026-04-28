@@ -176,6 +176,20 @@ function extractTitleFromUrlSlug(url: URL): string {
     .trim();
 }
 
+function extractAmazonPublishedDateFromHtml(html: string): string | null {
+  const plain = html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ");
+  const match = plain.match(
+    /Publication date\s*[:\u200e\u200f\u202a-\u202e]*\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}\s+[A-Za-z]+\s+\d{4}|\d{4})/i
+  );
+  if (!match?.[1]) {
+    return null;
+  }
+  return toIsoDate(match[1]);
+}
+
 function looksGenericYouTubeMetadata(title: string, description: string): boolean {
   const normalizedTitle = title.trim().toLowerCase();
   const normalizedDescription = description.trim().toLowerCase();
@@ -436,14 +450,18 @@ async function fetchAmazonBookFallback(url: URL): Promise<Partial<PreviewPayload
     return { title, description, category: "book", publishedDate, thumbnailUrl };
   }
 
+  if (/^[0-9A-Z]{10}$/i.test(asinOrIsbn)) {
+    thumbnailUrl = `https://images-na.ssl-images-amazon.com/images/P/${asinOrIsbn}.01.LZZZZZZZ.jpg`;
+  }
+
   const isbnLike = asinOrIsbn.replace(/[^0-9X]/gi, "");
   if (isbnLike.length !== 10 && isbnLike.length !== 13) {
     return { title, description, category: "book", publishedDate, thumbnailUrl };
   }
 
-  // Always provide a deterministic cover URL for valid ISBN links,
-  // even when metadata APIs fail or are incomplete.
-  thumbnailUrl = `https://covers.openlibrary.org/b/isbn/${isbnLike}-L.jpg`;
+  if (!thumbnailUrl) {
+    thumbnailUrl = `https://covers.openlibrary.org/b/isbn/${isbnLike}-L.jpg`;
+  }
 
   try {
     const response = await fetch(`https://openlibrary.org/isbn/${encodeURIComponent(isbnLike)}.json`, {
@@ -651,12 +669,17 @@ export async function GET(request: NextRequest) {
       const amazonFallback = await fetchAmazonBookFallback(targetUrl);
       title = amazonFallback.title?.trim() || title;
       description = amazonFallback.description?.trim() || description;
-      publishedDate = amazonFallback.publishedDate ?? publishedDate;
+      publishedDate =
+        amazonFallback.publishedDate ?? publishedDate ?? extractAmazonPublishedDateFromHtml(html);
       thumbnailUrl = amazonFallback.thumbnailUrl ?? thumbnailUrl;
     }
 
     const inferredCategory = inferCategory(targetUrl.hostname, targetUrl.pathname, title, description);
-    const category = CATEGORY_SET.has(inferredCategory) ? inferredCategory : FALLBACK_CATEGORY;
+    const category = amazonHost
+      ? "book"
+      : CATEGORY_SET.has(inferredCategory)
+      ? inferredCategory
+      : FALLBACK_CATEGORY;
 
     const payload: PreviewPayload = {
       title,

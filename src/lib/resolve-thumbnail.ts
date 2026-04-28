@@ -95,6 +95,9 @@ export function resolveThumbnailFromUrl(link: string): string | null {
       const asinOrIsbn =
         url.pathname.match(/\/(?:dp|gp\/product|d)\/([0-9A-Z]{10}|[0-9X-]{10,17})/i)?.[1] ?? null;
       if (asinOrIsbn) {
+        if (/^[0-9A-Z]{10}$/i.test(asinOrIsbn)) {
+          return `https://images-na.ssl-images-amazon.com/images/P/${asinOrIsbn}.01.LZZZZZZZ.jpg`;
+        }
         const isbn = normalizeIsbn(asinOrIsbn);
         if (isbn) {
           return `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
