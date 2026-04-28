@@ -190,6 +190,59 @@ function extractAmazonPublishedDateFromHtml(html: string): string | null {
   return toIsoDate(match[1]);
 }
 
+function stripHtmlTags(value: string): string {
+  return decodeHtmlEntities(
+    value
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+  );
+}
+
+function extractAmazonTitleFromHtml(html: string): string {
+  const titleFromId =
+    html.match(/id=["']productTitle["'][^>]*>\s*([\s\S]*?)\s*<\/span>/i)?.[1] ?? "";
+  if (titleFromId.trim()) {
+    return normalizeWhitespace(stripHtmlTags(titleFromId));
+  }
+
+  const ogTitle = decodeHtmlEntities(getMetaContent(html, "og:title") ?? "").trim();
+  if (ogTitle) {
+    return ogTitle
+      .replace(/\s*:\s*Amazon(?:\.[A-Za-z.]+)?\s*$/i, "")
+      .replace(/\s*\|\s*Amazon(?:\.[A-Za-z.]+)?\s*$/i, "")
+      .trim();
+  }
+
+  const pageTitle = decodeHtmlEntities(getTitle(html) ?? "").trim();
+  return pageTitle
+    .replace(/\s*:\s*Amazon(?:\.[A-Za-z.]+)?\s*$/i, "")
+    .replace(/\s*\|\s*Amazon(?:\.[A-Za-z.]+)?\s*$/i, "")
+    .trim();
+}
+
+function extractAmazonDescriptionFromHtml(html: string): string {
+  const sectionCandidates = [
+    /id=["']bookDescription_feature_div["'][\s\S]*?<noscript>([\s\S]*?)<\/noscript>/i,
+    /id=["']bookDescription_feature_div["'][\s\S]*?<div[^>]*class=["'][^"']*a-expander-content[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+    /id=["']productDescription["'][\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/i
+  ];
+
+  for (const pattern of sectionCandidates) {
+    const match = html.match(pattern);
+    if (!match?.[1]) {
+      continue;
+    }
+    const cleaned = firstFourSentences(stripHtmlTags(match[1]));
+    if (cleaned) {
+      return cleaned;
+    }
+  }
+
+  const metaDescription = decodeHtmlEntities(getMetaContent(html, "description") ?? "").trim();
+  return metaDescription ? firstFourSentences(metaDescription) : "";
+}
+
 function looksGenericYouTubeMetadata(title: string, description: string): boolean {
   const normalizedTitle = title.trim().toLowerCase();
   const normalizedDescription = description.trim().toLowerCase();
@@ -221,15 +274,23 @@ function normalizeWhitespace(value: string): string {
 }
 
 function firstTwoSentences(value: string): string {
+  return firstSentences(value, 2);
+}
+
+function firstSentences(value: string, sentenceCount: number): string {
   const normalized = normalizeWhitespace(value);
   if (!normalized) {
     return "";
   }
   const parts = normalized.split(/(?<=[.!?])\s+/).filter(Boolean);
-  if (parts.length <= 2) {
+  if (parts.length <= sentenceCount) {
     return normalized;
   }
-  return `${parts[0]} ${parts[1]}`.trim();
+  return parts.slice(0, sentenceCount).join(" ").trim();
+}
+
+function firstFourSentences(value: string): string {
+  return firstSentences(value, 4);
 }
 
 function unescapeJsonString(value: string): string {
@@ -474,14 +535,35 @@ async function fetchAmazonBookFallback(url: URL): Promise<Partial<PreviewPayload
       title?: string;
       description?: string | { value?: string };
       publish_date?: string;
+      works?: Array<{ key?: string }>;
     };
     title = data.title?.trim() || title;
     if (typeof data.description === "string") {
-      description = firstTwoSentences(data.description);
+      description = firstFourSentences(data.description);
     } else {
-      description = firstTwoSentences(data.description?.value ?? "");
+      description = firstFourSentences(data.description?.value ?? "");
     }
     publishedDate = toIsoDate(data.publish_date ?? null);
+
+    if (!description && data.works?.[0]?.key) {
+      try {
+        const workResponse = await fetch(`https://openlibrary.org${data.works[0].key}.json`, {
+          signal: AbortSignal.timeout(7000)
+        });
+        if (workResponse.ok) {
+          const work = (await workResponse.json()) as {
+            description?: string | { value?: string };
+          };
+          if (typeof work.description === "string") {
+            description = firstFourSentences(work.description);
+          } else {
+            description = firstFourSentences(work.description?.value ?? "");
+          }
+        }
+      } catch {
+        // Best-effort fallback path.
+      }
+    }
   } catch {
     // Best-effort fallback path.
   }
@@ -666,9 +748,11 @@ export async function GET(request: NextRequest) {
         }
       }
     } else if (amazonHost) {
+      const amazonTitleFromHtml = extractAmazonTitleFromHtml(html);
+      const amazonDescriptionFromHtml = extractAmazonDescriptionFromHtml(html);
       const amazonFallback = await fetchAmazonBookFallback(targetUrl);
-      title = amazonFallback.title?.trim() || title;
-      description = amazonFallback.description?.trim() || description;
+      title = amazonTitleFromHtml || amazonFallback.title?.trim() || title;
+      description = amazonDescriptionFromHtml || amazonFallback.description?.trim() || description;
       publishedDate =
         amazonFallback.publishedDate ?? publishedDate ?? extractAmazonPublishedDateFromHtml(html);
       thumbnailUrl = amazonFallback.thumbnailUrl ?? thumbnailUrl;
