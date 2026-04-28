@@ -263,6 +263,19 @@ function extractJsonLdPublishedDate(html: string): string | null {
   return null;
 }
 
+function extractEmbeddedPublishedDate(html: string): string | null {
+  const keys = ["uploadDate", "publishDate", "datePublished", "dateCreated"];
+  for (const key of keys) {
+    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = html.match(new RegExp(`"${escapedKey}"\\s*:\\s*"([^"]+)"`));
+    const normalized = toIsoDate(match?.[1] ?? null);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
 function extractSpotifyDescriptionFromHtml(html: string): string {
   const raw = extractJsonLdDescription(html);
   if (!raw) {
@@ -349,7 +362,9 @@ async function fetchYouTubeFallback(videoId: string): Promise<Partial<PreviewPay
             getMetaContent(watchHtml, "uploadDate") ??
             getMetaContent(watchHtml, "datePublished") ??
             ""
-        ) ?? extractJsonLdPublishedDate(watchHtml);
+        ) ??
+        extractJsonLdPublishedDate(watchHtml) ??
+        extractEmbeddedPublishedDate(watchHtml);
     }
   } catch {
     // Best-effort fallback path.
