@@ -928,6 +928,7 @@ export default function ResourcesApp() {
                 const isOwner = user?.id === resource.created_by;
                 const isLiked = likedIds.has(resource.id);
                 const authorName = resource.profiles?.name || "Anonymous contributor";
+                const isAnonymousContributor = !resource.profiles?.name?.trim();
                 const catLabel = CATEGORY_LABELS[resource.category];
                 const displayThumb =
                   resource.thumbnail_url ?? resolveThumbnailFromUrl(resource.link);
@@ -987,14 +988,20 @@ export default function ResourcesApp() {
                           type="button"
                           className="btn-follow"
                           onClick={() => void handleToggleFollow(resource.created_by)}
-                          disabled={!canSocialAct || resource.created_by === user?.id}
+                          disabled={
+                            !canSocialAct || resource.created_by === user?.id || isAnonymousContributor
+                          }
                           title={
-                            canSocialAct
+                            isAnonymousContributor
+                              ? "Anonymous contributors cannot be followed"
+                              : canSocialAct
                               ? "Follow contributor"
                               : "Sign in with a full account to follow"
                           }
                         >
-                          {followingIds.has(resource.created_by)
+                          {isAnonymousContributor
+                            ? "Follow"
+                            : followingIds.has(resource.created_by)
                             ? `Unfollow ${authorName}`
                             : `Follow ${authorName}`}
                         </button>

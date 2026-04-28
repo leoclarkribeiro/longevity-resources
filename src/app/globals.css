@@ -888,6 +888,12 @@ a.btn-peach--outline {
 
 .form-stack .resource-link-input {
   background: var(--surface);
+  border: 2px solid var(--heading-green);
+}
+
+.form-stack .resource-link-input:focus {
+  outline: 2px solid color-mix(in srgb, var(--heading-green) 35%, transparent);
+  outline-offset: 1px;
 }
 
 .resource-preview-row {
