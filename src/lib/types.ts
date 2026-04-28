@@ -38,6 +38,7 @@ export type ResourceRow = {
   link: string;
   category: ResourceCategory;
   description: string | null;
+  date_published: string | null;
   thumbnail_url: string | null;
   created_at: string;
   created_by: string;

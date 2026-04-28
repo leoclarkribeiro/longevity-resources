@@ -903,6 +903,12 @@ a.btn-peach--outline {
   gap: 0.6rem;
 }
 
+.resource-meta-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 0.3fr);
+  gap: 0.6rem;
+}
+
 .resource-preview-hint {
   color: var(--text-muted);
   font-size: 0.85rem;

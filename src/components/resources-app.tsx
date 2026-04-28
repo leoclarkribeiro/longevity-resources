@@ -16,7 +16,7 @@ import {
   ResourceRow
 } from "@/lib/types";
 
-type SortKey = "created_at" | "likes_count" | "author";
+type SortKey = "created_at" | "date_published" | "likes_count" | "user";
 type SortDirection = "asc" | "desc";
 type CategoryFilter = "all" | ResourceCategory;
 
@@ -24,6 +24,7 @@ type ResourceForm = {
   name: string;
   link: string;
   category: ResourceCategory;
+  publishedDate: string;
   description: string;
 };
 
@@ -31,6 +32,7 @@ const defaultForm: ResourceForm = {
   name: "",
   link: "",
   category: "article",
+  publishedDate: "",
   description: ""
 };
 
@@ -135,6 +137,10 @@ export default function ResourcesApp() {
       let compare = 0;
       if (sortKey === "created_at") {
         compare = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      } else if (sortKey === "date_published") {
+        const publishedA = a.date_published ? new Date(a.date_published).getTime() : 0;
+        const publishedB = b.date_published ? new Date(b.date_published).getTime() : 0;
+        compare = publishedA - publishedB;
       } else if (sortKey === "likes_count") {
         compare = a.likes_count - b.likes_count;
       } else {
@@ -262,7 +268,7 @@ export default function ResourcesApp() {
       const { data, error } = await supabase
         .from("resources")
         .select(
-          "id,name,link,category,description,thumbnail_url,created_at,created_by,is_guest_post,likes_count"
+          "id,name,link,category,description,date_published,thumbnail_url,created_at,created_by,is_guest_post,likes_count"
         )
         .order("created_at", { ascending: false });
 
@@ -357,6 +363,7 @@ export default function ResourcesApp() {
         title?: string;
         description?: string;
         category?: ResourceCategory;
+        publishedDate?: string | null;
         thumbnailUrl?: string | null;
         error?: string;
       };
@@ -370,6 +377,7 @@ export default function ResourcesApp() {
         ...prev,
         name: payload.title?.trim() || prev.name,
         category: payload.category ?? prev.category,
+        publishedDate: payload.publishedDate ?? prev.publishedDate,
         description: payload.description?.trim() || prev.description
       }));
       setPreviewThumbnailUrl(payload.thumbnailUrl ?? null);
@@ -417,7 +425,7 @@ export default function ResourcesApp() {
     const { data, error } = await supabase
       .from("resources")
       .select(
-        "id,name,link,category,description,thumbnail_url,created_at,created_by,is_guest_post,likes_count"
+        "id,name,link,category,description,date_published,thumbnail_url,created_at,created_by,is_guest_post,likes_count"
       )
       .order("created_at", { ascending: false });
 
@@ -457,6 +465,7 @@ export default function ResourcesApp() {
       name: resourceForm.name.trim(),
       link: resourceForm.link.trim(),
       category: resourceForm.category,
+      date_published: resourceForm.publishedDate || null,
       description: resourceForm.description.trim() || null,
       created_by: activeUser.id,
       is_guest_post: Boolean(activeUser.is_anonymous)
@@ -820,18 +829,26 @@ export default function ResourcesApp() {
                 We suggest details from the URL; you can edit any field.
               </span>
             </div>
-            <select
-              value={resourceForm.category}
-              onChange={(event) =>
-                setResourceField("category", event.target.value as ResourceCategory)
-              }
-            >
-              {RESOURCE_CATEGORIES.map((category) => (
-                <option key={category} value={category}>
-                  {CATEGORY_LABELS[category]}
-                </option>
-              ))}
-            </select>
+            <div className="resource-meta-row">
+              <select
+                value={resourceForm.category}
+                onChange={(event) =>
+                  setResourceField("category", event.target.value as ResourceCategory)
+                }
+              >
+                {RESOURCE_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>
+                    {CATEGORY_LABELS[category]}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="date"
+                value={resourceForm.publishedDate}
+                onChange={(event) => setResourceField("publishedDate", event.target.value)}
+                aria-label="Date published"
+              />
+            </div>
             <textarea
               value={resourceForm.description}
               onChange={(event) => setResourceField("description", event.target.value)}
@@ -900,9 +917,10 @@ export default function ResourcesApp() {
                 value={sortKey}
                 onChange={(event) => setSortKey(event.target.value as SortKey)}
               >
-                <option value="created_at">Date</option>
+                <option value="created_at">Date Added</option>
+                <option value="date_published">Date Published</option>
                 <option value="likes_count">Likes</option>
-                <option value="author">Author</option>
+                <option value="user">User</option>
               </select>
             </div>
             <div className="toolbar__field">
@@ -930,6 +948,13 @@ export default function ResourcesApp() {
                 const authorName = resource.profiles?.name || "Anonymous contributor";
                 const isAnonymousContributor = !resource.profiles?.name?.trim();
                 const catLabel = CATEGORY_LABELS[resource.category];
+                const publishedDateLabel = resource.date_published
+                  ? new Date(resource.date_published).toLocaleDateString(undefined, {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric"
+                    })
+                  : null;
                 const displayThumb =
                   resource.thumbnail_url ?? resolveThumbnailFromUrl(resource.link);
 
@@ -948,6 +973,7 @@ export default function ResourcesApp() {
                       </h3>
                       <p className="resource-card__meta">
                         <span className="cat">{catLabel}</span>
+                        {publishedDateLabel ? ` · Published ${publishedDateLabel}` : ""}
                         {" · Added by "}
                         <Link href={`/profile/${resource.created_by}`} className="inline-link">
                           {authorName}
@@ -1017,6 +1043,7 @@ export default function ResourcesApp() {
                                   name: resource.name,
                                   link: resource.link,
                                   category: resource.category,
+                                  publishedDate: resource.date_published ?? "",
                                   description: resource.description ?? ""
                                 });
                                 setPreviewThumbnailUrl(resource.thumbnail_url ?? null);

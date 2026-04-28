@@ -6,6 +6,7 @@ type PreviewPayload = {
   description: string;
   category: ResourceCategory;
   thumbnailUrl: string | null;
+  publishedDate: string | null;
 };
 
 const FALLBACK_CATEGORY: ResourceCategory = "article";
@@ -99,6 +100,25 @@ function decodeHtmlEntities(value: string): string {
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'");
+}
+
+function toIsoDate(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const direct = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (direct?.[1]) {
+    return direct[1];
+  }
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toISOString().slice(0, 10);
 }
 
 function extractYouTubeVideoId(url: URL): string | null {
@@ -213,6 +233,34 @@ function extractJsonLdDescription(html: string): string {
   return "";
 }
 
+function extractJsonLdPublishedDate(html: string): string | null {
+  const scripts = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) ?? [];
+  for (const script of scripts) {
+    const body = script
+      .replace(/<script[^>]*>/i, "")
+      .replace(/<\/script>/i, "")
+      .trim();
+    if (!body) {
+      continue;
+    }
+    try {
+      const data = JSON.parse(body) as
+        | { datePublished?: string }
+        | Array<{ datePublished?: string }>;
+      const items = Array.isArray(data) ? data : [data];
+      for (const item of items) {
+        const normalized = toIsoDate(item?.datePublished ?? null);
+        if (normalized) {
+          return normalized;
+        }
+      }
+    } catch {
+      // Keep scanning other json-ld scripts.
+    }
+  }
+  return null;
+}
+
 function extractSpotifyDescriptionFromHtml(html: string): string {
   const raw = extractJsonLdDescription(html);
   if (!raw) {
@@ -261,6 +309,7 @@ async function fetchYouTubeFallback(videoId: string): Promise<Partial<PreviewPay
   let title = "";
   let description = "";
   let thumbnailUrl: string | null = null;
+  let publishedDate: string | null = null;
 
   try {
     const watchUrl = `https://www.youtube.com/watch?v=${videoId}&hl=en`;
@@ -292,13 +341,19 @@ async function fetchYouTubeFallback(videoId: string): Promise<Partial<PreviewPay
         ),
         new URL(watchUrl)
       );
+      publishedDate =
+        toIsoDate(
+          getMetaContent(watchHtml, "og:video:release_date") ??
+            getMetaContent(watchHtml, "datePublished") ??
+            ""
+        ) ?? extractJsonLdPublishedDate(watchHtml);
     }
   } catch {
     // Best-effort fallback path.
   }
 
   if (title && !looksGenericYouTubeMetadata(title, description)) {
-    return { title, description: firstTwoSentences(description), thumbnailUrl };
+    return { title, description: firstTwoSentences(description), thumbnailUrl, publishedDate };
   }
 
   try {
@@ -318,10 +373,11 @@ async function fetchYouTubeFallback(videoId: string): Promise<Partial<PreviewPay
     return {
       title: oembed.title?.trim() || title,
       description: firstTwoSentences(description),
-      thumbnailUrl: oembed.thumbnail_url ?? thumbnailUrl
+      thumbnailUrl: oembed.thumbnail_url ?? thumbnailUrl,
+      publishedDate
     };
   } catch {
-    return { title, description: firstTwoSentences(description), thumbnailUrl };
+    return { title, description: firstTwoSentences(description), thumbnailUrl, publishedDate };
   }
 }
 
@@ -443,6 +499,15 @@ export async function GET(request: NextRequest) {
       ),
       targetUrl
     );
+    let publishedDate =
+      toIsoDate(
+        getMetaContent(html, "article:published_time") ??
+          getMetaContent(html, "og:published_time") ??
+          getMetaContent(html, "publish_date") ??
+          getMetaContent(html, "datePublished") ??
+          getMetaContent(html, "parsely-pub-date") ??
+          ""
+      ) ?? extractJsonLdPublishedDate(html);
 
     const youtubeVideoId = extractYouTubeVideoId(targetUrl);
     if (youtubeVideoId) {
@@ -455,6 +520,9 @@ export async function GET(request: NextRequest) {
       }
       if (ytFallback.thumbnailUrl) {
         thumbnailUrl = ytFallback.thumbnailUrl;
+      }
+      if (ytFallback.publishedDate) {
+        publishedDate = ytFallback.publishedDate;
       }
       if (!description.trim()) {
         description = `Watch "${title}" on YouTube.`;
@@ -475,7 +543,8 @@ export async function GET(request: NextRequest) {
       title,
       description,
       category,
-      thumbnailUrl
+      thumbnailUrl,
+      publishedDate
     };
     return NextResponse.json(payload);
   } catch {

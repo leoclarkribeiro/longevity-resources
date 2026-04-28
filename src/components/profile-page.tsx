@@ -38,7 +38,7 @@ export default function ProfilePage({ userId }: ProfilePageProps) {
           supabase
             .from("resources")
             .select(
-              "id,name,link,category,description,thumbnail_url,created_at,created_by,is_guest_post,likes_count"
+              "id,name,link,category,description,date_published,thumbnail_url,created_at,created_by,is_guest_post,likes_count"
             )
             .eq("created_by", userId)
             .order("created_at", { ascending: false })
