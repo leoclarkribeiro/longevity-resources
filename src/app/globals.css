@@ -875,7 +875,7 @@ a.btn-peach--outline {
   padding: 0.65rem 0.85rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--resource-link-field-bg);
   color: var(--text);
   font-family: inherit;
   font-size: 0.95rem;
@@ -887,7 +887,7 @@ a.btn-peach--outline {
 }
 
 .form-stack .resource-link-input {
-  background: var(--resource-link-field-bg);
+  background: var(--surface);
 }
 
 .resource-preview-row {
