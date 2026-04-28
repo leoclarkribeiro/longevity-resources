@@ -151,6 +151,31 @@ function isSpotifyHost(hostname: string): boolean {
   return host === "open.spotify.com" || host.endsWith(".spotify.com");
 }
 
+function isAmazonHost(hostname: string): boolean {
+  const host = hostname.replace(/^www\./, "").toLowerCase();
+  return host.includes("amazon.");
+}
+
+function extractAmazonAsinOrIsbn(url: URL): string | null {
+  const match =
+    url.pathname.match(/\/(?:dp|gp\/product|d)\/([0-9A-Z]{10}|[0-9X-]{10,17})/i)?.[1] ?? null;
+  return match ? match.toUpperCase() : null;
+}
+
+function extractTitleFromUrlSlug(url: URL): string {
+  const slug = url.pathname
+    .split("/")
+    .filter(Boolean)
+    .find((part) => /[a-z]/i.test(part) && !["dp", "gp", "product", "d"].includes(part.toLowerCase()));
+  if (!slug) {
+    return "";
+  }
+  return slug
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function looksGenericYouTubeMetadata(title: string, description: string): boolean {
   const normalizedTitle = title.trim().toLowerCase();
   const normalizedDescription = description.trim().toLowerCase();
@@ -399,6 +424,50 @@ async function fetchYouTubeFallback(videoId: string): Promise<Partial<PreviewPay
   }
 }
 
+async function fetchAmazonBookFallback(url: URL): Promise<Partial<PreviewPayload>> {
+  const asinOrIsbn = extractAmazonAsinOrIsbn(url);
+  const titleFromSlug = extractTitleFromUrlSlug(url);
+  let title = titleFromSlug;
+  let description = "";
+  let publishedDate: string | null = null;
+  let thumbnailUrl: string | null = null;
+
+  if (!asinOrIsbn) {
+    return { title, description, category: "book", publishedDate, thumbnailUrl };
+  }
+
+  const isbnLike = asinOrIsbn.replace(/[^0-9X]/gi, "");
+  if (isbnLike.length !== 10 && isbnLike.length !== 13) {
+    return { title, description, category: "book", publishedDate, thumbnailUrl };
+  }
+
+  try {
+    const response = await fetch(`https://openlibrary.org/isbn/${encodeURIComponent(isbnLike)}.json`, {
+      signal: AbortSignal.timeout(7000)
+    });
+    if (!response.ok) {
+      return { title, description, category: "book", publishedDate, thumbnailUrl };
+    }
+    const data = (await response.json()) as {
+      title?: string;
+      description?: string | { value?: string };
+      publish_date?: string;
+    };
+    title = data.title?.trim() || title;
+    if (typeof data.description === "string") {
+      description = firstTwoSentences(data.description);
+    } else {
+      description = firstTwoSentences(data.description?.value ?? "");
+    }
+    publishedDate = toIsoDate(data.publish_date ?? null);
+    thumbnailUrl = `https://covers.openlibrary.org/b/isbn/${isbnLike}-L.jpg`;
+  } catch {
+    // Best-effort fallback path.
+  }
+
+  return { title, description, category: "book", publishedDate, thumbnailUrl };
+}
+
 function inferCategory(
   hostname: string,
   pathname: string,
@@ -476,6 +545,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const amazonHost = isAmazonHost(targetUrl.hostname);
     const response = await fetch(targetUrl.toString(), {
       headers: {
         "user-agent": "LongevityResourcesBot/1.0 (+metadata preview)",
@@ -486,6 +556,17 @@ export async function GET(request: NextRequest) {
     });
 
     if (!response.ok) {
+      if (amazonHost) {
+        const fallback = await fetchAmazonBookFallback(targetUrl);
+        const fallbackTitle = fallback.title?.trim() || extractTitleFromUrlSlug(targetUrl) || "Amazon book";
+        return NextResponse.json({
+          title: fallbackTitle,
+          description: fallback.description ?? "",
+          category: "book",
+          thumbnailUrl: fallback.thumbnailUrl,
+          publishedDate: fallback.publishedDate
+        });
+      }
       return NextResponse.json(
         { error: `Could not fetch URL metadata (status ${response.status}).` },
         { status: 502 }
@@ -494,6 +575,17 @@ export async function GET(request: NextRequest) {
 
     const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
     if (!contentType.includes("text/html")) {
+      if (amazonHost) {
+        const fallback = await fetchAmazonBookFallback(targetUrl);
+        const fallbackTitle = fallback.title?.trim() || extractTitleFromUrlSlug(targetUrl) || "Amazon book";
+        return NextResponse.json({
+          title: fallbackTitle,
+          description: fallback.description ?? "",
+          category: "book",
+          thumbnailUrl: fallback.thumbnailUrl,
+          publishedDate: fallback.publishedDate
+        });
+      }
       return NextResponse.json(
         { error: "This link does not appear to be an HTML page." },
         { status: 400 }
@@ -552,6 +644,12 @@ export async function GET(request: NextRequest) {
           description = spotifyDescription;
         }
       }
+    } else if (amazonHost) {
+      const amazonFallback = await fetchAmazonBookFallback(targetUrl);
+      title = amazonFallback.title?.trim() || title;
+      description = amazonFallback.description?.trim() || description;
+      publishedDate = amazonFallback.publishedDate ?? publishedDate;
+      thumbnailUrl = amazonFallback.thumbnailUrl ?? thumbnailUrl;
     }
 
     const inferredCategory = inferCategory(targetUrl.hostname, targetUrl.pathname, title, description);
