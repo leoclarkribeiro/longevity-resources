@@ -146,6 +146,10 @@ function looksGenericSpotifyDescription(description: string): boolean {
   return (
     !normalized ||
     normalized === "spotify · episode" ||
+    normalized.endsWith(" · episode") ||
+    normalized.endsWith(" · song") ||
+    normalized.endsWith(" · album") ||
+    normalized.endsWith(" · playlist") ||
     normalized.includes("spotify · episode") ||
     normalized.includes("spotify · song") ||
     normalized.includes("spotify · album") ||
