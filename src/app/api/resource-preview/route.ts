@@ -282,7 +282,37 @@ function firstSentences(value: string, sentenceCount: number): string {
   if (!normalized) {
     return "";
   }
-  const parts = normalized.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const rawParts = normalized.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const parts: string[] = [];
+  const nonTerminalAbbrev = new Set([
+    "mr.",
+    "mrs.",
+    "ms.",
+    "dr.",
+    "prof.",
+    "sr.",
+    "jr.",
+    "st.",
+    "vs.",
+    "etc.",
+    "e.g.",
+    "i.e."
+  ]);
+
+  for (const chunk of rawParts) {
+    if (parts.length === 0) {
+      parts.push(chunk);
+      continue;
+    }
+    const prev = parts[parts.length - 1];
+    const lastWord = prev.split(/\s+/).pop()?.toLowerCase() ?? "";
+    if (nonTerminalAbbrev.has(lastWord)) {
+      parts[parts.length - 1] = `${prev} ${chunk}`;
+    } else {
+      parts.push(chunk);
+    }
+  }
+
   if (parts.length <= sentenceCount) {
     return normalized;
   }
