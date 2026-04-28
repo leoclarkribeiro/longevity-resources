@@ -441,6 +441,10 @@ async function fetchAmazonBookFallback(url: URL): Promise<Partial<PreviewPayload
     return { title, description, category: "book", publishedDate, thumbnailUrl };
   }
 
+  // Always provide a deterministic cover URL for valid ISBN links,
+  // even when metadata APIs fail or are incomplete.
+  thumbnailUrl = `https://covers.openlibrary.org/b/isbn/${isbnLike}-L.jpg`;
+
   try {
     const response = await fetch(`https://openlibrary.org/isbn/${encodeURIComponent(isbnLike)}.json`, {
       signal: AbortSignal.timeout(7000)
@@ -460,7 +464,6 @@ async function fetchAmazonBookFallback(url: URL): Promise<Partial<PreviewPayload
       description = firstTwoSentences(data.description?.value ?? "");
     }
     publishedDate = toIsoDate(data.publish_date ?? null);
-    thumbnailUrl = `https://covers.openlibrary.org/b/isbn/${isbnLike}-L.jpg`;
   } catch {
     // Best-effort fallback path.
   }
