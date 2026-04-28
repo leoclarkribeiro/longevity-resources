@@ -11,6 +11,7 @@
   );
   --surface: #ffffff;
   --surface-muted: #f6f4f0;
+  --resource-link-field-bg: #ece9e2;
   --text: #1f2d26;
   --text-muted: #5c6b62;
   --heading-green: #2d4a3e;
@@ -39,6 +40,7 @@
   );
   --surface: #1e2622;
   --surface-muted: #252e29;
+  --resource-link-field-bg: #2b3731;
   --text: #e8eee9;
   --text-muted: #9caaa2;
   --heading-green: #c5dcc8;
@@ -882,6 +884,10 @@ a.btn-peach--outline {
 .form-stack textarea {
   min-height: 88px;
   resize: vertical;
+}
+
+.form-stack .resource-link-input {
+  background: var(--resource-link-field-bg);
 }
 
 .resource-preview-row {

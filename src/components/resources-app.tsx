@@ -792,10 +792,11 @@ export default function ResourcesApp() {
             <input
               value={resourceForm.name}
               onChange={(event) => setResourceField("name", event.target.value)}
-              placeholder="Name"
+              placeholder="Title"
               required
             />
             <input
+              className="resource-link-input"
               value={resourceForm.link}
               onChange={(event) => {
                 setResourceField("link", event.target.value);
