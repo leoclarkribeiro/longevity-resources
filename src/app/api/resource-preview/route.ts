@@ -245,11 +245,13 @@ function extractJsonLdPublishedDate(html: string): string | null {
     }
     try {
       const data = JSON.parse(body) as
-        | { datePublished?: string }
-        | Array<{ datePublished?: string }>;
+        | { datePublished?: string; uploadDate?: string; dateCreated?: string }
+        | Array<{ datePublished?: string; uploadDate?: string; dateCreated?: string }>;
       const items = Array.isArray(data) ? data : [data];
       for (const item of items) {
-        const normalized = toIsoDate(item?.datePublished ?? null);
+        const normalized = toIsoDate(
+          item?.datePublished ?? item?.uploadDate ?? item?.dateCreated ?? null
+        );
         if (normalized) {
           return normalized;
         }
@@ -344,6 +346,7 @@ async function fetchYouTubeFallback(videoId: string): Promise<Partial<PreviewPay
       publishedDate =
         toIsoDate(
           getMetaContent(watchHtml, "og:video:release_date") ??
+            getMetaContent(watchHtml, "uploadDate") ??
             getMetaContent(watchHtml, "datePublished") ??
             ""
         ) ?? extractJsonLdPublishedDate(watchHtml);
