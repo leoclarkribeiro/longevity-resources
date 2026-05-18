@@ -72,6 +72,7 @@ export default function ResourcesApp() {
   const [previewThumbnailUrl, setPreviewThumbnailUrl] = useState<string | null>(null);
   const [message, setMessage] = useState<string>("");
   const [authGateOpen, setAuthGateOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
 
   const isAnonymous = Boolean(user?.is_anonymous);
   const canSocialAct = Boolean(user && !isAnonymous);
@@ -467,6 +468,10 @@ export default function ResourcesApp() {
       });
   }
 
+  function requestDelete(id: string, name: string) {
+    setDeleteConfirm({ id, name });
+  }
+
   async function handleDelete(id: string) {
     if (missingSupabaseEnv) {
       return;
@@ -481,8 +486,23 @@ export default function ResourcesApp() {
       return;
     }
 
+    if (editingId === id) {
+      setEditingId(null);
+      setResourceForm(defaultForm);
+      setPreviewThumbnailUrl(null);
+    }
+
     setMessage("Resource deleted.");
     await reloadResources();
+  }
+
+  async function confirmDelete() {
+    if (!deleteConfirm) {
+      return;
+    }
+    const { id } = deleteConfirm;
+    setDeleteConfirm(null);
+    await handleDelete(id);
   }
 
   async function handleToggleLike(resourceId: string) {
@@ -712,6 +732,48 @@ export default function ResourcesApp() {
       </section>
 
       <main className="site-main">
+        {deleteConfirm ? (
+          <div
+            className="auth-gate-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-confirm-title"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !busy) {
+                setDeleteConfirm(null);
+              }
+            }}
+          >
+            <div className="auth-gate-modal__panel card" onClick={(e) => e.stopPropagation()}>
+              <h2 id="delete-confirm-title" className="font-serif auth-gate-modal__title">
+                Delete resource?
+              </h2>
+              <p className="subtext auth-gate-modal__text">
+                Are you sure you want to delete{" "}
+                <strong>{deleteConfirm.name}</strong>? This cannot be undone.
+              </p>
+              <div className="auth-gate-modal__actions">
+                <button
+                  type="button"
+                  className="btn-peach"
+                  onClick={() => void confirmDelete()}
+                  disabled={busy}
+                >
+                  Delete
+                </button>
+                <button
+                  type="button"
+                  className="btn-peach btn-peach--outline"
+                  onClick={() => setDeleteConfirm(null)}
+                  disabled={busy}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {authGateOpen ? (
           <div
             className="auth-gate-modal"
@@ -933,7 +995,7 @@ export default function ResourcesApp() {
                       setPreviewThumbnailUrl(resource.thumbnail_url ?? null);
                       scrollToSection("add-resource-form");
                     }}
-                    onDelete={() => void handleDelete(resource.id)}
+                    onDelete={() => requestDelete(resource.id, resource.name)}
                   />
                 );
               })}
