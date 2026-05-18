@@ -7,9 +7,10 @@ import { fetchFollowCounts, type FollowCounts } from "@/lib/profile-social";
 
 type ProfileSocialStatsProps = {
   userId: string;
+  refreshKey?: number;
 };
 
-export default function ProfileSocialStats({ userId }: ProfileSocialStatsProps) {
+export default function ProfileSocialStats({ userId, refreshKey = 0 }: ProfileSocialStatsProps) {
   const [counts, setCounts] = useState<FollowCounts | null>(null);
 
   useEffect(() => {
@@ -37,7 +38,7 @@ export default function ProfileSocialStats({ userId }: ProfileSocialStatsProps) 
     return () => {
       mounted = false;
     };
-  }, [userId]);
+  }, [userId, refreshKey]);
 
   if (!counts) {
     return <p className="profile-social-stats subtext">Loading social stats…</p>;

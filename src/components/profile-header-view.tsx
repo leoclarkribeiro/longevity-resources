@@ -13,6 +13,7 @@ type ProfileHeaderViewProps = {
   profile: Profile | null;
   userId: string;
   email?: string | null;
+  statsRefreshKey?: number;
   actions?: ReactNode;
 };
 
@@ -20,6 +21,7 @@ export default function ProfileHeaderView({
   profile,
   userId,
   email,
+  statsRefreshKey,
   actions
 }: ProfileHeaderViewProps) {
   const name = profileDisplayName(profile);
@@ -55,7 +57,7 @@ export default function ProfileHeaderView({
           <dd>{profile?.country?.trim() || "—"}</dd>
         </dl>
       </div>
-      <ProfileSocialStats userId={userId} />
+      <ProfileSocialStats userId={userId} refreshKey={statsRefreshKey} />
       {actions ? <div className="inline-actions profile-header-view__actions">{actions}</div> : null}
     </>
   );

@@ -17,3 +17,8 @@ export function getAuthCallbackUrl(): string {
   const origin = getSiteOrigin();
   return origin ? `${origin}/auth/callback` : "/auth/callback";
 }
+
+export function getAuthResetPasswordUrl(): string {
+  const origin = getSiteOrigin();
+  return origin ? `${origin}/auth/reset-password` : "/auth/reset-password";
+}

@@ -19,6 +19,9 @@ export default function ProfilePage({ userId }: ProfilePageProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [resources, setResources] = useState<ProfileResourceRow[]>([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followBusy, setFollowBusy] = useState(false);
+  const [statsRefreshKey, setStatsRefreshKey] = useState(0);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -84,6 +87,55 @@ export default function ProfilePage({ userId }: ProfilePageProps) {
     void loadLikes();
   }, [resources, user, canSocialAct]);
 
+  useEffect(() => {
+    if (missingSupabaseEnv || !canSocialAct || isOwnProfile) {
+      setIsFollowing(false);
+      return;
+    }
+
+    async function loadFollowState() {
+      const { data, error } = await supabase
+        .from("follows")
+        .select("follower_id")
+        .eq("follower_id", user!.id)
+        .eq("following_id", userId)
+        .maybeSingle();
+
+      if (!error) {
+        setIsFollowing(Boolean(data));
+      }
+    }
+
+    void loadFollowState();
+  }, [userId, user, canSocialAct, isOwnProfile]);
+
+  async function handleToggleFollow() {
+    if (missingSupabaseEnv || !canSocialAct || !user || isOwnProfile) {
+      if (!canSocialAct) {
+        setMessage("Follow is only available for registered users.");
+      }
+      return;
+    }
+
+    setFollowBusy(true);
+    const alreadyFollowing = isFollowing;
+    const request = alreadyFollowing
+      ? supabase.from("follows").delete().eq("follower_id", user.id).eq("following_id", userId)
+      : supabase.from("follows").insert({ follower_id: user.id, following_id: userId });
+
+    const { error } = await request;
+    setFollowBusy(false);
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setIsFollowing(!alreadyFollowing);
+    setStatsRefreshKey((key) => key + 1);
+    setMessage(alreadyFollowing ? "Unfollowed user." : "Now following user.");
+  }
+
   async function handleToggleLike(resourceId: string) {
     if (!canSocialAct || !user) {
       return;
@@ -140,8 +192,26 @@ export default function ProfilePage({ userId }: ProfilePageProps) {
             profile={profile}
             userId={userId}
             email={isOwnProfile ? user?.email : undefined}
+            statsRefreshKey={statsRefreshKey}
             actions={
               <>
+                {!isOwnProfile ? (
+                  <button
+                    type="button"
+                    className="btn-follow"
+                    onClick={() => void handleToggleFollow()}
+                    disabled={!canSocialAct || followBusy}
+                    title={
+                      canSocialAct
+                        ? isFollowing
+                          ? `Unfollow ${authorName}`
+                          : `Follow ${authorName}`
+                        : "Sign in with a full account to follow"
+                    }
+                  >
+                    {isFollowing ? `Unfollow ${authorName}` : `Follow ${authorName}`}
+                  </button>
+                ) : null}
                 <Link href="/" className="btn-peach btn-peach--outline">
                   Back to resources
                 </Link>

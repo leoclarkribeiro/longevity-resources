@@ -19,9 +19,17 @@ export default function AuthLoginPage() {
       return;
     }
     const params = new URLSearchParams(window.location.search);
+    let cleanedQuery = false;
     if (params.get("registered") === "1") {
       setMessage("Account created. Sign in to continue.");
       params.delete("registered");
+      cleanedQuery = true;
+    } else if (params.get("reset") === "1") {
+      setMessage("Password updated. Sign in with your new password.");
+      params.delete("reset");
+      cleanedQuery = true;
+    }
+    if (cleanedQuery) {
       const nextQuery = params.toString();
       const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`;
       window.history.replaceState(null, "", nextUrl);
@@ -110,6 +118,11 @@ export default function AuthLoginPage() {
             required
             autoComplete="current-password"
           />
+          <p className="auth-page__forgot">
+            <Link href="/auth/forgot-password" className="auth-page__switch-link">
+              Forgot password?
+            </Link>
+          </p>
           <button type="submit" className="btn-peach" disabled={busy}>
             Sign in
           </button>

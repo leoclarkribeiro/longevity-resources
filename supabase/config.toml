@@ -24,12 +24,20 @@ port = 54324
 enabled = true
 # Must match your deployed app URL in Supabase Dashboard (Auth → URL Configuration).
 # For local dev, localhost is fine. Set NEXT_PUBLIC_SITE_URL in production.
-site_url = "http://localhost:3000"
+site_url = "https://longevity-resources.xyz"
 additional_redirect_urls = [
   "http://localhost:3000",
   "http://localhost:3000/auth/callback",
+  "http://localhost:3000/auth/reset-password",
   "http://127.0.0.1:3000",
   "http://127.0.0.1:3000/auth/callback",
+  "http://127.0.0.1:3000/auth/reset-password",
+  "https://longevity-resources.vercel.app",
+  "https://longevity-resources.vercel.app/auth/callback",
+  "https://longevity-resources.vercel.app/auth/reset-password",
+  "https://longevity-resources.xyz",
+  "https://longevity-resources.xyz/auth/callback",
+  "https://longevity-resources.xyz/auth/reset-password",
 ]
 jwt_expiry = 3600
 enable_signup = true

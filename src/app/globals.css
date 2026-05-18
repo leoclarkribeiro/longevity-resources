@@ -1088,6 +1088,12 @@ h3 {
   margin: 0 auto;
 }
 
+.auth-page__forgot {
+  margin: -0.35rem 0 0;
+  text-align: right;
+  font-size: 0.9rem;
+}
+
 .auth-page__switch {
   margin: 1.5rem 0 0;
   padding-top: 1.25rem;
