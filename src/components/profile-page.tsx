@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { missingSupabaseEnv, supabase } from "@/lib/supabase/client";
 import { Profile, ResourceRow } from "@/lib/types";
+import ProfileSocialStats from "@/components/profile-social-stats";
 
 type ProfilePageProps = {
   userId: string;
@@ -62,7 +63,8 @@ export default function ProfilePage({ userId }: ProfilePageProps) {
         <p className="eyebrow">Profile</p>
         <h1 className="font-serif">{profile?.name || "Contributor"}</h1>
         <p className="subtext">Country: {profile?.country || "Not specified"}</p>
-        <div className="inline-actions">
+        <ProfileSocialStats userId={userId} />
+        <div className="inline-actions" style={{ marginTop: "1rem" }}>
           <Link href="/" className="btn-peach btn-peach--outline">
             Back to resources
           </Link>
@@ -81,7 +83,7 @@ export default function ProfilePage({ userId }: ProfilePageProps) {
             <li key={resource.id} className="resource-item">
               <p className="resource-meta">
                 {resource.category} · {new Date(resource.created_at).toLocaleDateString()} ·{" "}
-                {resource.likes_count} likes
+                {resource.likes_count} {resource.likes_count === 1 ? "like" : "likes"}
               </p>
               <h3>
                 <a href={resource.link} target="_blank" rel="noreferrer">

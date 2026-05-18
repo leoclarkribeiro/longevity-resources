@@ -292,6 +292,21 @@ export default function ResourcesApp() {
       return;
     }
 
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void reloadResources();
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  });
+
+  useEffect(() => {
+    if (missingSupabaseEnv) {
+      return;
+    }
+
     async function fetchRelationshipState() {
       if (!user) {
         return;
@@ -1006,8 +1021,14 @@ export default function ResourcesApp() {
                           <span className="btn-like__heart" aria-hidden>
                             ♥
                           </span>
-                          {isLiked ? (
-                            <span className="btn-like__count">{resource.likes_count}</span>
+                          {resource.likes_count > 0 ? (
+                            <span
+                              className={
+                                isLiked ? "btn-like__count" : "btn-like__count btn-like__count--others"
+                              }
+                            >
+                              {resource.likes_count}
+                            </span>
                           ) : null}
                         </button>
                         <button

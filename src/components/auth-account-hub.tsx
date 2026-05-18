@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { missingSupabaseEnv, supabase } from "@/lib/supabase/client";
 import { mapAppUser } from "@/lib/map-app-user";
 import type { AppUser, Profile } from "@/lib/types";
+import ProfileSocialStats from "@/components/profile-social-stats";
 
 const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 const AVATAR_MIME = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
@@ -304,10 +305,14 @@ export default function AuthAccountHub() {
                 <dd>{profile?.country?.trim() || "—"}</dd>
               </dl>
             </div>
+            <ProfileSocialStats userId={user.id} />
             <div className="inline-actions" style={{ marginTop: "1rem" }}>
               <button type="button" className="btn-peach" onClick={() => setProfileMode("edit")}>
                 Edit profile
               </button>
+              <Link href={`/profile/${user.id}`} className="btn-peach btn-peach--outline">
+                Public profile
+              </Link>
             </div>
           </>
         ) : (
