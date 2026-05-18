@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { missingSupabaseEnv, supabase } from "@/lib/supabase/client";
 import { mapAppUser } from "@/lib/map-app-user";
 import type { AppUser, Profile } from "@/lib/types";
-import ProfileSocialStats from "@/components/profile-social-stats";
+import ProfileHeaderView from "@/components/profile-header-view";
 
 const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 const AVATAR_MIME = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
@@ -281,39 +281,21 @@ export default function AuthAccountHub() {
       <section className="card">
         {profileMode === "view" ? (
           <>
-            <div className="auth-profile-view">
-              <div className="avatar-uploader__preview auth-profile-view__avatar">
-                {profile?.avatar_url ? (
-                  <Image
-                    src={profile.avatar_url}
-                    alt=""
-                    width={96}
-                    height={96}
-                    className="avatar-uploader__preview-img"
-                    unoptimized
-                  />
-                ) : (
-                  <span className="avatar-uploader__fallback">{headerName.charAt(0).toUpperCase()}</span>
-                )}
-              </div>
-              <dl className="auth-profile-view__dl">
-                <dt>Name</dt>
-                <dd>{profile?.name?.trim() || "—"}</dd>
-                <dt>Email</dt>
-                <dd>{user.email || "—"}</dd>
-                <dt>Country</dt>
-                <dd>{profile?.country?.trim() || "—"}</dd>
-              </dl>
-            </div>
-            <ProfileSocialStats userId={user.id} />
-            <div className="inline-actions" style={{ marginTop: "1rem" }}>
-              <button type="button" className="btn-peach" onClick={() => setProfileMode("edit")}>
-                Edit profile
-              </button>
-              <Link href={`/profile/${user.id}`} className="btn-peach btn-peach--outline">
-                Public profile
-              </Link>
-            </div>
+            <ProfileHeaderView
+              profile={profile}
+              userId={user.id}
+              email={user.email}
+              actions={
+                <>
+                  <button type="button" className="btn-peach" onClick={() => setProfileMode("edit")}>
+                    Edit profile
+                  </button>
+                  <Link href={`/profile/${user.id}`} className="btn-peach btn-peach--outline">
+                    Public profile
+                  </Link>
+                </>
+              }
+            />
           </>
         ) : (
           <form onSubmit={handleSaveProfileEdit} className="stack">

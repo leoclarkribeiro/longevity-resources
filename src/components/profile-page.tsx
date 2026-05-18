@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { missingSupabaseEnv, supabase } from "@/lib/supabase/client";
 import { Profile, ResourceRow } from "@/lib/types";
-import ProfileSocialStats from "@/components/profile-social-stats";
+import ProfileHeaderView, { profileDisplayName } from "@/components/profile-header-view";
+import ResourceCard, { type ResourceCardData } from "@/components/resource-card";
+import { useAuthUser } from "@/lib/use-auth-user";
 
 type ProfilePageProps = {
   userId: string;
@@ -13,10 +15,15 @@ type ProfilePageProps = {
 type ProfileResourceRow = Omit<ResourceRow, "profiles">;
 
 export default function ProfilePage({ userId }: ProfilePageProps) {
+  const { user, ready } = useAuthUser();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [resources, setResources] = useState<ProfileResourceRow[]>([]);
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+
+  const isOwnProfile = Boolean(ready && user && !user.is_anonymous && user.id === userId);
+  const canSocialAct = Boolean(user && !user.is_anonymous);
 
   useEffect(() => {
     if (missingSupabaseEnv) {
@@ -57,43 +64,122 @@ export default function ProfilePage({ userId }: ProfilePageProps) {
     void loadData();
   }, [userId]);
 
+  useEffect(() => {
+    if (missingSupabaseEnv || !canSocialAct || resources.length === 0) {
+      setLikedIds(new Set());
+      return;
+    }
+
+    async function loadLikes() {
+      const resourceIds = resources.map((resource) => resource.id);
+      const { data } = await supabase
+        .from("resource_likes")
+        .select("resource_id")
+        .eq("user_id", user!.id)
+        .in("resource_id", resourceIds);
+
+      setLikedIds(new Set((data ?? []).map((row) => row.resource_id as string)));
+    }
+
+    void loadLikes();
+  }, [resources, user, canSocialAct]);
+
+  async function handleToggleLike(resourceId: string) {
+    if (!canSocialAct || !user) {
+      return;
+    }
+
+    const alreadyLiked = likedIds.has(resourceId);
+    const snapshotLiked = new Set(likedIds);
+    const snapshotResources = resources;
+
+    setLikedIds((prev) => {
+      const next = new Set(prev);
+      if (alreadyLiked) {
+        next.delete(resourceId);
+      } else {
+        next.add(resourceId);
+      }
+      return next;
+    });
+    setResources((prev) =>
+      prev.map((resource) =>
+        resource.id !== resourceId
+          ? resource
+          : {
+              ...resource,
+              likes_count: alreadyLiked
+                ? Math.max(0, resource.likes_count - 1)
+                : resource.likes_count + 1
+            }
+      )
+    );
+
+    const request = alreadyLiked
+      ? supabase.from("resource_likes").delete().eq("resource_id", resourceId).eq("user_id", user.id)
+      : supabase.from("resource_likes").insert({ resource_id: resourceId, user_id: user.id });
+
+    const { error } = await request;
+    if (error) {
+      setLikedIds(snapshotLiked);
+      setResources(snapshotResources);
+      setMessage(error.message);
+    }
+  }
+
+  const authorName = profileDisplayName(profile);
+
   return (
     <main className="page">
       <section className="card">
         <p className="eyebrow">Profile</p>
-        <h1 className="font-serif">{profile?.name || "Contributor"}</h1>
-        <p className="subtext">Country: {profile?.country || "Not specified"}</p>
-        <ProfileSocialStats userId={userId} />
-        <div className="inline-actions" style={{ marginTop: "1rem" }}>
-          <Link href="/" className="btn-peach btn-peach--outline">
-            Back to resources
-          </Link>
-          <Link href="/auth" className="btn-peach btn-peach--outline">
-            Account page
-          </Link>
-        </div>
+        {loading && !profile ? (
+          <p className="subtext">Loading profile…</p>
+        ) : (
+          <ProfileHeaderView
+            profile={profile}
+            userId={userId}
+            email={isOwnProfile ? user?.email : undefined}
+            actions={
+              <>
+                <Link href="/" className="btn-peach btn-peach--outline">
+                  Back to resources
+                </Link>
+                {isOwnProfile ? (
+                  <Link href="/auth" className="btn-peach">
+                    Edit profile
+                  </Link>
+                ) : null}
+              </>
+            }
+          />
+        )}
         {message ? <p className="status">{message}</p> : null}
       </section>
 
       <section className="card">
-        <h2>Contributions</h2>
-        {loading ? <p>Loading profile...</p> : null}
-        <ul className="resource-list">
-          {resources.map((resource) => (
-            <li key={resource.id} className="resource-item">
-              <p className="resource-meta">
-                {resource.category} · {new Date(resource.created_at).toLocaleDateString()} ·{" "}
-                {resource.likes_count} {resource.likes_count === 1 ? "like" : "likes"}
-              </p>
-              <h3>
-                <a href={resource.link} target="_blank" rel="noreferrer">
-                  {resource.name}
-                </a>
-              </h3>
-              {resource.description ? <p className="subtext">{resource.description}</p> : null}
-            </li>
-          ))}
-        </ul>
+        <h2 className="font-serif">Contributions</h2>
+        {loading ? <p className="subtext">Loading contributions…</p> : null}
+        {!loading && resources.length === 0 ? (
+          <p className="subtext">No contributions yet.</p>
+        ) : null}
+        {!loading && resources.length > 0 ? (
+          <ul className="resource-cards">
+            {resources.map((resource) => (
+              <ResourceCard
+                key={resource.id}
+                resource={resource as ResourceCardData}
+                authorName={authorName}
+                isLiked={likedIds.has(resource.id)}
+                isOwner={isOwnProfile}
+                canSocialAct={canSocialAct}
+                showAuthor={false}
+                showFollow={false}
+                onToggleLike={() => void handleToggleLike(resource.id)}
+              />
+            ))}
+          </ul>
+        ) : null}
       </section>
     </main>
   );

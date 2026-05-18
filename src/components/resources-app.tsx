@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import ResourceCard from "@/components/resource-card";
 import { missingSupabaseEnv, supabase } from "@/lib/supabase/client";
 import { mapAppUser } from "@/lib/map-app-user";
 import { resolveThumbnailFromUrl } from "@/lib/resolve-thumbnail";
@@ -40,61 +41,6 @@ type RawResourceRow = Omit<ResourceRow, "profiles">;
 
 function scrollToSection(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function resourceThumbFrameClass(category: ResourceCategory): string {
-  if (category === "book") {
-    return "resource-card__thumb--book";
-  }
-  if (category === "video") {
-    return "resource-card__thumb--video";
-  }
-  return "resource-card__thumb--landscape";
-}
-
-function categoryPlaceholderIcon(category: ResourceCategory): string {
-  switch (category) {
-    case "video":
-      return "▶";
-    case "podcast":
-      return "🎙";
-    case "book":
-      return "📖";
-    case "article":
-      return "📄";
-    case "services":
-      return "✦";
-    default:
-      return "◇";
-  }
-}
-
-function ResourceThumbnail({
-  resolvedUrl,
-  category
-}: {
-  resolvedUrl: string | null;
-  category: ResourceCategory;
-}) {
-  const [failed, setFailed] = useState(false);
-  if (!resolvedUrl || failed) {
-    return (
-      <span className="resource-card__thumb-placeholder" aria-hidden>
-        {categoryPlaceholderIcon(category)}
-      </span>
-    );
-  }
-  return (
-    <Image
-      src={resolvedUrl}
-      alt=""
-      fill
-      sizes="120px"
-      className="resource-card__thumb-img"
-      unoptimized
-      onError={() => setFailed(true)}
-    />
-  );
 }
 
 function displayUserName(profile: Profile | null, user: AppUser | null): string {
@@ -962,129 +908,33 @@ export default function ResourcesApp() {
                 const isLiked = likedIds.has(resource.id);
                 const authorName = resource.profiles?.name || "Anonymous contributor";
                 const isAnonymousContributor = !resource.profiles?.name?.trim();
-                const catLabel = CATEGORY_LABELS[resource.category];
-                const publishedDateLabel = resource.date_published
-                  ? new Date(resource.date_published).toLocaleDateString(undefined, {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric"
-                    })
-                  : null;
-                const displayThumb =
-                  resource.thumbnail_url ?? resolveThumbnailFromUrl(resource.link);
-
                 return (
-                  <li key={resource.id} className="resource-card">
-                    <div
-                      className={`resource-card__thumb ${resourceThumbFrameClass(resource.category)}`}
-                    >
-                      <ResourceThumbnail resolvedUrl={displayThumb} category={resource.category} />
-                    </div>
-                    <div className="resource-card__body">
-                      <h3 className="resource-card__title font-serif">
-                        <a href={resource.link} target="_blank" rel="noreferrer">
-                          {resource.name}
-                        </a>
-                      </h3>
-                      <p className="resource-card__meta">
-                        <span className="cat">{catLabel}</span>
-                        {publishedDateLabel ? ` · Published ${publishedDateLabel}` : ""}
-                        {" · Added by "}
-                        <Link href={`/profile/${resource.created_by}`} className="inline-link">
-                          {authorName}
-                        </Link>
-                        {" on "}
-                        {new Date(resource.created_at).toLocaleDateString(undefined, {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric"
-                        })}
-                      </p>
-                      {resource.description ? (
-                        <p className="resource-card__desc">{resource.description}</p>
-                      ) : null}
-                      <div className="resource-card__actions">
-                        <button
-                          type="button"
-                          className={isLiked ? "btn-like btn-like--active" : "btn-like"}
-                          onClick={() => void handleToggleLike(resource.id)}
-                          disabled={!canSocialAct}
-                          aria-pressed={isLiked}
-                          title={
-                            canSocialAct
-                              ? isLiked
-                                ? "Remove like"
-                                : "Like"
-                              : "Sign in with a full account to like"
-                          }
-                        >
-                          <span className="btn-like__heart" aria-hidden>
-                            ♥
-                          </span>
-                          {resource.likes_count > 0 ? (
-                            <span
-                              className={
-                                isLiked ? "btn-like__count" : "btn-like__count btn-like__count--others"
-                              }
-                            >
-                              {resource.likes_count}
-                            </span>
-                          ) : null}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-follow"
-                          onClick={() => void handleToggleFollow(resource.created_by)}
-                          disabled={
-                            !canSocialAct || resource.created_by === user?.id || isAnonymousContributor
-                          }
-                          title={
-                            isAnonymousContributor
-                              ? "Anonymous contributors cannot be followed"
-                              : canSocialAct
-                              ? "Follow contributor"
-                              : "Sign in with a full account to follow"
-                          }
-                        >
-                          {isAnonymousContributor
-                            ? "Follow"
-                            : followingIds.has(resource.created_by)
-                            ? `Unfollow ${authorName}`
-                            : `Follow ${authorName}`}
-                        </button>
-                        <span className="pill-category">{catLabel}</span>
-                        {isOwner ? (
-                          <>
-                            <button
-                              type="button"
-                              className="btn-ghost-sm"
-                              onClick={() => {
-                                setEditingId(resource.id);
-                                setResourceForm({
-                                  name: resource.name,
-                                  link: resource.link,
-                                  category: resource.category,
-                                  publishedDate: resource.date_published ?? "",
-                                  description: resource.description ?? ""
-                                });
-                                setPreviewThumbnailUrl(resource.thumbnail_url ?? null);
-                                scrollToSection("add-resource-form");
-                              }}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-ghost-sm"
-                              onClick={() => void handleDelete(resource.id)}
-                            >
-                              Delete
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                  </li>
+                  <ResourceCard
+                    key={resource.id}
+                    resource={resource}
+                    authorName={authorName}
+                    isLiked={isLiked}
+                    isFollowing={followingIds.has(resource.created_by)}
+                    isOwner={isOwner}
+                    canSocialAct={canSocialAct}
+                    isAnonymousContributor={isAnonymousContributor}
+                    showOwnerActions
+                    onToggleLike={() => void handleToggleLike(resource.id)}
+                    onToggleFollow={() => void handleToggleFollow(resource.created_by)}
+                    onEdit={() => {
+                      setEditingId(resource.id);
+                      setResourceForm({
+                        name: resource.name,
+                        link: resource.link,
+                        category: resource.category,
+                        publishedDate: resource.date_published ?? "",
+                        description: resource.description ?? ""
+                      });
+                      setPreviewThumbnailUrl(resource.thumbnail_url ?? null);
+                      scrollToSection("add-resource-form");
+                    }}
+                    onDelete={() => void handleDelete(resource.id)}
+                  />
                 );
               })}
             </ul>

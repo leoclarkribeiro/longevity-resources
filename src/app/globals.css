@@ -1138,6 +1138,19 @@ h3 {
   font-weight: 600;
 }
 
+.profile-header-view__actions {
+  margin-top: 1rem;
+}
+
+.card > h2.font-serif {
+  margin: 0 0 1rem;
+  font-size: 1.35rem;
+}
+
+.card > .resource-cards {
+  margin-top: 0.25rem;
+}
+
 .profile-social-stats {
   margin: 0.75rem 0 0;
   font-size: 0.95rem;
