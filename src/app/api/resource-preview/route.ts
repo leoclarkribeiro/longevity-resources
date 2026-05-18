@@ -12,7 +12,7 @@ type PreviewPayload = {
 const FALLBACK_CATEGORY: ResourceCategory = "article";
 const CATEGORY_SET = new Set<ResourceCategory>(RESOURCE_CATEGORIES);
 const HOST_RULES: Array<{ category: ResourceCategory; hosts: string[] }> = [
-  { category: "video", hosts: ["youtube.com", "youtu.be", "vimeo.com", "ted.com"] },
+  { category: "video", hosts: ["youtube.com", "youtu.be", "vimeo.com", "dailymotion.com", "ted.com"] },
   {
     category: "podcast",
     hosts: ["spotify.com", "podcasts.apple.com", "open.spotify.com", "overcast.fm"]
@@ -25,7 +25,7 @@ const HOST_RULES: Array<{ category: ResourceCategory; hosts: string[] }> = [
 ];
 
 const CATEGORY_TERMS: Record<ResourceCategory, string[]> = {
-  video: ["video", "watch", "webinar", "talk", "ted", "youtube", "vimeo", "lecture"],
+  video: ["video", "watch", "webinar", "talk", "ted", "youtube", "vimeo", "dailymotion", "lecture"],
   podcast: [
     "podcast",
     "episode",
@@ -119,6 +119,49 @@ function toIsoDate(value: string | null): string | null {
     return null;
   }
   return parsed.toISOString().slice(0, 10);
+}
+
+function extractDailymotionVideoId(url: URL): string | null {
+  const host = url.hostname.replace(/^www\./, "").toLowerCase();
+  if (!host.includes("dailymotion.com")) {
+    return null;
+  }
+  const match = url.pathname.match(/\/video\/([a-zA-Z0-9]+)/);
+  return match?.[1] ?? null;
+}
+
+async function fetchDailymotionFallback(pageUrl: string): Promise<Partial<PreviewPayload>> {
+  const oembedUrl = `https://www.dailymotion.com/services/oembed?url=${encodeURIComponent(
+    pageUrl
+  )}&format=json`;
+
+  const response = await fetch(oembedUrl, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(8000)
+  });
+
+  if (!response.ok) {
+    return {};
+  }
+
+  const data = (await response.json()) as {
+    title?: string;
+    description?: string;
+    thumbnail_url?: string;
+  };
+
+  const title = data.title?.trim() ?? "";
+  let description = data.description?.trim() ?? "";
+  if (!description || description === title) {
+    description = title ? `Watch "${title}" on Dailymotion.` : "";
+  }
+
+  return {
+    title,
+    description,
+    category: "video",
+    thumbnailUrl: data.thumbnail_url ?? null
+  };
 }
 
 function extractYouTubeVideoId(url: URL): string | null {
@@ -727,6 +770,20 @@ export async function GET(request: NextRequest) {
 
   try {
     const amazonHost = isAmazonHost(targetUrl.hostname);
+    const dailymotionVideoId = extractDailymotionVideoId(targetUrl);
+    if (dailymotionVideoId) {
+      const dmFallback = await fetchDailymotionFallback(targetUrl.toString());
+      const title = dmFallback.title?.trim() || "Dailymotion video";
+      return NextResponse.json({
+        title,
+        description:
+          dmFallback.description?.trim() || `Watch "${title}" on Dailymotion.`,
+        category: "video",
+        thumbnailUrl: dmFallback.thumbnailUrl ?? null,
+        publishedDate: null
+      });
+    }
+
     const response = await fetch(targetUrl.toString(), {
       headers: {
         "user-agent": "LongevityResourcesBot/1.0 (+metadata preview)",

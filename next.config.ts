@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "books.google.com" },
       { protocol: "https", hostname: "covers.openlibrary.org" },
       { protocol: "https", hostname: "vumbnail.com" },
+      { protocol: "https", hostname: "s2.dmcdn.net" },
+      { protocol: "https", hostname: "www.dailymotion.com", pathname: "/thumbnail/**" },
       { protocol: "https", hostname: "dytkknnaqttwmoglagkq.supabase.co", pathname: "/storage/v1/object/public/**" },
       { protocol: "http", hostname: "127.0.0.1", port: "54321", pathname: "/storage/v1/object/public/**" }
     ]

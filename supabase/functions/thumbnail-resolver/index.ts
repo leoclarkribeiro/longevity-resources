@@ -116,6 +116,13 @@ function resolveThumbnail(link: string): string | null {
         return `https://vumbnail.com/${vid}.jpg`;
       }
     }
+
+    if (host.includes("dailymotion.com")) {
+      const videoId = url.pathname.match(/\/video\/([a-zA-Z0-9]+)/)?.[1] ?? null;
+      if (videoId) {
+        return `https://www.dailymotion.com/thumbnail/video/${videoId}`;
+      }
+    }
   } catch {
     return null;
   }
