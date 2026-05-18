@@ -22,8 +22,20 @@ port = 54324
 
 [auth]
 enabled = true
+# Must match your deployed app URL in Supabase Dashboard (Auth → URL Configuration).
+# For local dev, localhost is fine. Set NEXT_PUBLIC_SITE_URL in production.
 site_url = "http://localhost:3000"
-additional_redirect_urls = ["http://localhost:3000"]
+additional_redirect_urls = [
+  "http://localhost:3000",
+  "http://localhost:3000/auth/callback",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:3000/auth/callback",
+]
 jwt_expiry = 3600
 enable_signup = true
 enable_anonymous_sign_ins = true
+
+[auth.email]
+enable_signup = true
+# No confirmation email — users can sign in immediately after registering.
+enable_confirmations = false

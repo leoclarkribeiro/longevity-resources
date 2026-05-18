@@ -4,20 +4,12 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { missingSupabaseEnv, supabase } from "@/lib/supabase/client";
+import { getAuthCallbackUrl } from "@/lib/site-url";
 import { useAuthUser } from "@/lib/use-auth-user";
-
-function getEmailRedirectTo() {
-  if (typeof window === "undefined") {
-    return undefined;
-  }
-  return `${window.location.origin}/auth`;
-}
 
 export default function AuthRegisterPage() {
   const router = useRouter();
   const { user, ready } = useAuthUser();
-  const [name, setName] = useState("");
-  const [country, setCountry] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,6 +31,7 @@ export default function AuthRegisterPage() {
     }
 
     setBusy(true);
+    setMessage("");
     const {
       data: { session }
     } = await supabase.auth.getSession();
@@ -50,18 +43,9 @@ export default function AuthRegisterPage() {
       email: email.trim(),
       password,
       options: {
-        emailRedirectTo: getEmailRedirectTo()
+        emailRedirectTo: getAuthCallbackUrl()
       }
     });
-
-    const createdUserId = data.user?.id;
-    if (!error && createdUserId) {
-      await supabase.from("profiles").upsert({
-        id: createdUserId,
-        name: name.trim() || null,
-        country: country.trim() || null
-      });
-    }
     setBusy(false);
 
     if (error) {
@@ -69,9 +53,12 @@ export default function AuthRegisterPage() {
       return;
     }
 
-    setMessage(
-      "Account created. If email confirmation is on, check your inbox to finish signing up. You can sign in once your email is confirmed."
-    );
+    if (data.session) {
+      router.replace("/auth");
+      return;
+    }
+
+    router.replace("/auth/login?registered=1");
   }
 
   if (!ready) {
@@ -97,24 +84,12 @@ export default function AuthRegisterPage() {
         <h1 className="font-serif">Create an account</h1>
         <p className="hint">
           {user?.is_anonymous
-            ? "Add your email and a password. We’ll sign you out of this guest session when your new account is created. You may need to confirm your email to finish."
-            : "Add your email and a password. You may need to confirm your email to finish."}
+            ? "Add your email and a password. We’ll sign you out of this guest session when your new account is created."
+            : "Add your email and a password."}
         </p>
         {message ? <p className="status">{message}</p> : null}
 
         <form onSubmit={handleRegister} className="stack" style={{ marginTop: "1rem" }}>
-          <input
-            placeholder="Display name (optional)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            autoComplete="name"
-          />
-          <input
-            placeholder="Country (optional)"
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            autoComplete="country-name"
-          />
           <input
             placeholder="Email"
             type="email"

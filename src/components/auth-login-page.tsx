@@ -15,6 +15,20 @@ export default function AuthLoginPage() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("registered") === "1") {
+      setMessage("Account created. Sign in to continue.");
+      params.delete("registered");
+      const nextQuery = params.toString();
+      const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}`;
+      window.history.replaceState(null, "", nextUrl);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!ready || !user) {
       return;
     }
